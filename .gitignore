@@ -1,0 +1,18 @@
+*.iml
+.gradle
+/local.properties
+local.properties
+/.idea
+/.kotlin
+/build
+/app/build
+/captures
+.externalNativeBuild
+.cxx
+.DS_Store
+
+# Python (servidor local legado)
+__pycache__/
+*.pyc
+.venv/
+venv/
