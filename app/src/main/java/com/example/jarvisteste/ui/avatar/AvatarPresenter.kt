@@ -45,7 +45,8 @@ class AvatarPresenter(context: Context) {
     fun show(force: Boolean, demo: Boolean = false) {
         val power = appContext.getSystemService(PowerManager::class.java)
         val screenOff = power?.isInteractive == false
-        if (!force && isVisible) return
+        // Já está na frente: não repete notificação nem abertura.
+        if (isVisible) return
         if (!force && !screenOff) return
 
         ensureChannel()

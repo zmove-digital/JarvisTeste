@@ -41,6 +41,9 @@ class AvatarActivity : ComponentActivity() {
         prepareWindow()
         // Uma nova chamada com a tela apagada precisa acendê-la de novo.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) setTurnScreenOn(true)
+        runCatching {
+            getSystemService(NotificationManager::class.java)?.cancel(NOTIFICATION_ID)
+        }
     }
 
     override fun onResume() {
@@ -51,6 +54,11 @@ class AvatarActivity : ComponentActivity() {
         runCatching {
             getSystemService(NotificationManager::class.java)?.cancel(NOTIFICATION_ID)
         }
+    }
+
+    override fun onPause() {
+        AvatarPresenter.isVisible = false
+        super.onPause()
     }
 
     override fun onStop() {
