@@ -70,6 +70,18 @@ class JarvisListeningService : Service(), RecognitionListener {
     private val restartRunnable = Runnable { startListening() }
 
     /**
+     * Encerra o modo "acordado": depois de uma resposta (ou de um "Pois não?")
+     * o Jarvis aceita a próxima fala sem exigir o nome, mas só por alguns
+     * segundos — evita mandar conversa ambiente ao Gemini para sempre.
+     */
+    private val endAwakeRunnable = Runnable {
+        if (destroyed || speaking || !awake) return@Runnable
+        awake = false
+        Log.i(TAG, "Janela de conversa encerrada; voltando à palavra de ativação")
+        publishStatus(ListeningPhase.LISTENING, wakeListeningMessage())
+    }
+
+    /**
      * O reconhecedor encerra sozinho após ~5 s de silêncio e toca o bipe de
      * "falha" ANTES do callback onError. Esta tarefa adianta o silêncio para
      * cobrir esse bipe.
@@ -265,20 +277,35 @@ class JarvisListeningService : Service(), RecognitionListener {
         lastTranscript = text
         Log.i(TAG, "Transcrição final: \"$text\" (awake=$awake)")
 
-        if (awake) {
-            handleCommand(text)
-            return
-        }
-
         val normalized = normalize(text)
         val tokens = normalized.split(' ').filter { it.isNotBlank() }
         val wakeTokens = normalize(SettingsStore(this).wakeWord)
             .split(' ')
             .filter { it.isNotBlank() }
-        val wakeEnd = findWakeEnd(tokens, wakeTokens)
-        if (wakeEnd >= 0) Log.i(TAG, "Palavra de ativação detectada em: \"$text\"")
+        val wakeRange = findWakeRange(tokens, wakeTokens)
 
-        if (wakeEnd < 0) {
+        if (awake) {
+            // Modo de conversa: aceita a fala sem exigir o nome. Se a pessoa
+            // repetir o nome no começo ("Rafinha, ..."), ele é removido.
+            mainHandler.removeCallbacks(endAwakeRunnable)
+            val command = if (wakeRange != null && wakeRange.first == 0) {
+                tokens.drop(wakeRange.last + 1).joinToString(" ").trim()
+            } else {
+                text.trim()
+            }
+            Log.i(TAG, "Comando (modo conversa): \"$command\"")
+            if (command.isEmpty()) {
+                awake = true
+                speakPrompt("Pois não?")
+            } else {
+                handleCommand(command)
+            }
+            return
+        }
+
+        if (wakeRange != null) Log.i(TAG, "Palavra de ativação detectada em: \"$text\"")
+
+        if (wakeRange == null) {
             // Não era para o Jarvis: ignora e volta a ouvir.
             publishStatus(
                 ListeningPhase.LISTENING,
@@ -289,7 +316,7 @@ class JarvisListeningService : Service(), RecognitionListener {
             return
         }
 
-        val command = tokens.drop(wakeEnd + 1).joinToString(" ").trim()
+        val command = tokens.drop(wakeRange.last + 1).joinToString(" ").trim()
         if (command.isEmpty()) {
             awake = true
             speakPrompt("Pois não?")
@@ -303,9 +330,11 @@ class JarvisListeningService : Service(), RecognitionListener {
     // --------------------------------------------------------------- comando
 
     private fun handleCommand(command: String) {
+        mainHandler.removeCallbacks(endAwakeRunnable)
         speaking = true
         awake = false
         publishStatus(ListeningPhase.THINKING, "Consultando o Gemini...", transcript = command)
+        Log.i(TAG, "Enviando comando ao Gemini: \"$command\"")
 
         scope.launch {
             val settings = SettingsStore(this@JarvisListeningService)
@@ -320,6 +349,7 @@ class JarvisListeningService : Service(), RecognitionListener {
             val result = GeminiClient(settings.apiKey).ask(command)
             withContext(Dispatchers.Main.immediate) {
                 result.onSuccess { reply ->
+                    Log.i(TAG, "Resposta do Gemini (${reply.text.length} caracteres)")
                     speakAnswer(reply.text, settings)
                 }.onFailure { error ->
                     Log.w(TAG, "Falha na consulta", error)
@@ -366,12 +396,17 @@ class JarvisListeningService : Service(), RecognitionListener {
     private fun finishSpeech(token: Int, resetAwake: Boolean) {
         if (destroyed || token != speechToken) return
         speaking = false
-        if (resetAwake) awake = false
-        publishStatus(
-            if (awake) ListeningPhase.AWAKE else ListeningPhase.LISTENING,
-            if (awake) "Pode falar..." else wakeListeningMessage()
-        )
+        // Continua aceitando fala sem o nome: mais tempo depois de "Pois não?"
+        // (esperando o comando) e uma janela curta depois de cada resposta.
+        awake = true
+        scheduleEndAwake(if (resetAwake) FOLLOW_UP_WINDOW_MS else PROMPT_WINDOW_MS)
+        publishStatus(ListeningPhase.AWAKE, "Pode falar...")
         startListening()
+    }
+
+    private fun scheduleEndAwake(delayMs: Long) {
+        mainHandler.removeCallbacks(endAwakeRunnable)
+        mainHandler.postDelayed(endAwakeRunnable, delayMs)
     }
 
     // ------------------------------------------------------------ utilidades
@@ -389,17 +424,17 @@ class JarvisListeningService : Service(), RecognitionListener {
             .trim()
 
     /**
-     * Retorna o índice do ÚLTIMO token da palavra de ativação (para o comando
-     * começar depois dele), ou -1 se não foi chamado. Aceita nomes com uma ou
-     * várias palavras e tolera:
+     * Retorna o intervalo de tokens da palavra de ativação (do primeiro ao
+     * último), ou null se não foi chamado. Aceita nomes com uma ou várias
+     * palavras e tolera:
      *  - a transcrição separando o nome em pedaços (ex.: "jar vis");
      *  - a transcrição juntando tudo em um token (ex.: "eijarvis");
      *  - um erro de transcrição (distância de edição 1).
      */
-    private fun findWakeEnd(tokens: List<String>, wakeTokens: List<String>): Int {
-        if (wakeTokens.isEmpty() || tokens.isEmpty()) return -1
+    private fun findWakeRange(tokens: List<String>, wakeTokens: List<String>): IntRange? {
+        if (wakeTokens.isEmpty() || tokens.isEmpty()) return null
         val wakeJoined = wakeTokens.joinToString("")
-        if (wakeJoined.isEmpty()) return -1
+        if (wakeJoined.isEmpty()) return null
 
         // Janelas de 1 até (nº de palavras + 1) tokens cobrem nome separado,
         // nome inteiro num único token e nome com uma palavra a mais.
@@ -411,10 +446,10 @@ class JarvisListeningService : Service(), RecognitionListener {
                 val exact = windowJoined == wakeJoined
                 val close = wakeJoined.length >= 4 &&
                     levenshtein(windowJoined, wakeJoined) <= 1
-                if (exact || close) return start + size - 1
+                if (exact || close) return start..(start + size - 1)
             }
         }
-        return -1
+        return null
     }
 
     private fun levenshtein(a: String, b: String): Int {
@@ -546,6 +581,10 @@ class JarvisListeningService : Service(), RecognitionListener {
         private const val PREEMPTIVE_WINDOW_MS = 5_000L
         private const val END_OF_SPEECH_WINDOW_MS = 900L
         private const val TERMINAL_WINDOW_MS = 450L
+
+        // Tempo em que o Jarvis aceita fala sem repetir a palavra de ativação.
+        private const val FOLLOW_UP_WINDOW_MS = 8_000L
+        private const val PROMPT_WINDOW_MS = 12_000L
 
         private val _status = MutableStateFlow(
             ListeningStatus(ListeningPhase.STOPPED, "Escuta desligada")

@@ -49,7 +49,11 @@ usuário, sem servidor intermediário.
   ao Gemini após ouvir a palavra de ativação.
 - Ao ouvir a palavra sozinha ("Jarvis"), responde "Pois não?" e trata a próxima
   frase como comando.
-- Depois de responder, volta a ouvir a palavra de ativação.
+- Depois de responder, continua aceitando perguntas por cerca de 8 segundos sem
+  repetir a palavra de ativação, para conversas de acompanhamento. Se o nome for
+  repetido no início da frase, ele é removido antes de enviar ao Gemini.
+- Depois de responder, volta a ouvir a palavra de ativação assim que essa janela
+  de conversa termina.
 - O serviço é encerrado ao desligar pelo app ou pela notificação. Ele **não**
   reinicia sozinho após reiniciar o celular.
 - Fabricantes com gestão agressiva de bateria (Xiaomi, Samsung, Motorola) podem
