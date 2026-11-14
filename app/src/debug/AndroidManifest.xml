@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Só existe na variante debug: permite disparar o avatar pelo ADB para
+         testar o despertar da tela sem precisar falar a palavra de ativação. -->
+    <application>
+        <receiver
+            android:name=".debug.DebugAvatarReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.example.jarvisteste.DEBUG_AVATAR" />
+            </intent-filter>
+        </receiver>
+    </application>
+
+</manifest>

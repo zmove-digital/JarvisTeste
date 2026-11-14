@@ -2,4 +2,12 @@
 <resources>
 
     <style name="Theme.JarvisTeste" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <!-- Fundo escuro desde o primeiro frame: evita um flash branco quando o
+         avatar é aberto sobre a tela de bloqueio. -->
+    <style name="Theme.JarvisTeste.Avatar" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#000000</item>
+        <item name="android:windowShowWallpaper">false</item>
+        <item name="android:windowContentTransitions">false</item>
+    </style>
 </resources>

@@ -26,6 +26,7 @@ import com.example.jarvisteste.audio.RecognitionBeepSilencer
 import com.example.jarvisteste.audio.TtsManager
 import com.example.jarvisteste.data.GeminiClient
 import com.example.jarvisteste.data.SettingsStore
+import com.example.jarvisteste.ui.avatar.AvatarPresenter
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -60,6 +61,7 @@ class JarvisListeningService : Service(), RecognitionListener {
     private var tts: TtsManager? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var beepSilencer: RecognitionBeepSilencer? = null
+    private var avatarPresenter: AvatarPresenter? = null
 
     private var awake = false
     private var speaking = false
@@ -78,6 +80,7 @@ class JarvisListeningService : Service(), RecognitionListener {
         if (destroyed || speaking || !awake) return@Runnable
         awake = false
         Log.i(TAG, "Janela de conversa encerrada; voltando à palavra de ativação")
+        avatarPresenter?.hide()
         publishStatus(ListeningPhase.LISTENING, wakeListeningMessage())
     }
 
@@ -127,6 +130,7 @@ class JarvisListeningService : Service(), RecognitionListener {
 
         tts = TtsManager(this).also { it.init() }
         beepSilencer = RecognitionBeepSilencer(this)
+        avatarPresenter = AvatarPresenter(this)
 
         if (!SpeechRecognizer.isRecognitionAvailable(this)) {
             failAndStop("Reconhecimento de voz indisponível neste aparelho.")
@@ -161,6 +165,8 @@ class JarvisListeningService : Service(), RecognitionListener {
         tts = null
         runCatching { beepSilencer?.release() }
         beepSilencer = null
+        avatarPresenter?.hide()
+        avatarPresenter = null
         runCatching {
             if (wakeLock?.isHeld == true) wakeLock?.release()
         }
@@ -288,6 +294,7 @@ class JarvisListeningService : Service(), RecognitionListener {
             // Modo de conversa: aceita a fala sem exigir o nome. Se a pessoa
             // repetir o nome no começo ("Rafinha, ..."), ele é removido.
             mainHandler.removeCallbacks(endAwakeRunnable)
+            avatarPresenter?.show(force = false)
             val command = if (wakeRange != null && wakeRange.first == 0) {
                 tokens.drop(wakeRange.last + 1).joinToString(" ").trim()
             } else {
@@ -315,6 +322,9 @@ class JarvisListeningService : Service(), RecognitionListener {
             scheduleRestart(200)
             return
         }
+
+        // Acordou: acende a tela e mostra o avatar antes de consultar o Gemini.
+        avatarPresenter?.show(force = true)
 
         val command = tokens.drop(wakeRange.last + 1).joinToString(" ").trim()
         if (command.isEmpty()) {

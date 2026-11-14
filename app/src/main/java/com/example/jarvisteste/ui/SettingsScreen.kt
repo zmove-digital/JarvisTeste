@@ -1,26 +1,37 @@
 package com.example.jarvisteste.ui
 
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -29,6 +40,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -36,12 +50,20 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.example.jarvisteste.audio.TtsManager
 import com.example.jarvisteste.audio.VoiceCatalog
 import com.example.jarvisteste.data.ConversationMemory
 import com.example.jarvisteste.data.GeminiClient
 import com.example.jarvisteste.data.SettingsStore
 import com.example.jarvisteste.data.VoiceProfiles
+import com.example.jarvisteste.ui.avatar.AvatarActivity
+import com.example.jarvisteste.ui.avatar.AvatarMood
+import com.example.jarvisteste.ui.avatar.AvatarPreset
+import com.example.jarvisteste.ui.avatar.AvatarPresenter
+import com.example.jarvisteste.ui.avatar.Avatars
+import com.example.jarvisteste.ui.avatar.JarvisAvatar
 import com.example.jarvisteste.ui.components.JarvisBackground
 import com.example.jarvisteste.ui.components.JarvisColors
 import com.example.jarvisteste.ui.components.JarvisGhostButton
@@ -57,12 +79,15 @@ fun SettingsScreen(
     onBack: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val fullScreenAllowed = rememberFullScreenIntentAllowed()
 
     var apiKey by remember { mutableStateOf(settings.apiKey) }
     var showKey by remember { mutableStateOf(false) }
     var wakeWord by remember { mutableStateOf(settings.wakeWord) }
     var silenceBeeps by remember { mutableStateOf(settings.silenceBeeps) }
     var profileId by rememberSaveable { mutableStateOf(settings.voiceProfileId) }
+    var avatarId by rememberSaveable { mutableStateOf(settings.avatarId) }
     var voiceName by remember { mutableStateOf(settings.voiceName) }
     var testing by remember { mutableStateOf(false) }
     var feedback by remember { mutableStateOf<String?>(null) }
@@ -79,6 +104,7 @@ fun SettingsScreen(
         settings.voiceName = voiceName
         settings.pitch = profile.pitch
         settings.rate = profile.rate
+        settings.avatarId = avatarId
         if (showConfirmation) {
             feedback = "Ajustes salvos."
             feedbackIsError = false
@@ -307,6 +333,92 @@ fun SettingsScreen(
             HorizontalDivider(color = ColorDivider)
             Spacer(modifier = Modifier.height(22.dp))
 
+            // ---------------------------------------------------------- avatar
+            JarvisLabel("Avatar")
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(
+                text = "Quem aparece na tela quando o Jarvis conversa com você. " +
+                    "O avatar anima enquanto ouve, pensa e fala.",
+                color = JarvisColors.TextMuted,
+                fontSize = 12.sp
+            )
+            Spacer(modifier = Modifier.height(14.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Avatars.all.forEach { preset ->
+                    AvatarOption(
+                        preset = preset,
+                        selected = preset.id == avatarId,
+                        onClick = { avatarId = preset.id },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            JarvisGhostButton(
+                text = "Ver em tela cheia",
+                onClick = {
+                    save(showConfirmation = false)
+                    context.startActivity(
+                        Intent(context, AvatarActivity::class.java)
+                            .putExtra(AvatarActivity.EXTRA_DEMO, true)
+                    )
+                }
+            )
+
+            if (!fullScreenAllowed) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    color = JarvisColors.SurfaceAlt,
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        JarvisColors.BorderSelected
+                    )
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            text = "Permita acender a tela",
+                            color = JarvisColors.AccentSoft,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "No Android 14 ou superior, o sistema precisa autorizar " +
+                                "o Jarvis a abrir a tela cheia com o aparelho bloqueado. " +
+                                "Ative \"Permitir notificações de tela cheia\".",
+                            color = JarvisColors.TextMuted,
+                            fontSize = 11.sp
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        JarvisGhostButton(
+                            text = "Autorizar",
+                            onClick = {
+                                runCatching {
+                                    context.startActivity(
+                                        Intent(
+                                            Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,
+                                            Uri.parse("package:${context.packageName}")
+                                        )
+                                    )
+                                }
+                            }
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(22.dp))
+            HorizontalDivider(color = ColorDivider)
+            Spacer(modifier = Modifier.height(22.dp))
+
             // ------------------------------------------------------- conversa
             JarvisLabel("Conversa")
             Spacer(modifier = Modifier.height(10.dp))
@@ -347,6 +459,75 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(22.dp))
         }
+    }
+}
+
+@Composable
+private fun rememberFullScreenIntentAllowed(): Boolean {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var allowed by remember {
+        mutableStateOf(AvatarPresenter.canUseFullScreenIntent(context))
+    }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                allowed = AvatarPresenter.canUseFullScreenIntent(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    return allowed
+}
+
+@Composable
+private fun AvatarOption(
+    preset: AvatarPreset,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(if (selected) JarvisColors.SurfaceSelected else JarvisColors.SurfaceAlt)
+            .border(
+                width = 1.dp,
+                color = if (selected) JarvisColors.BorderSelected else JarvisColors.Border,
+                shape = RoundedCornerShape(14.dp)
+            )
+            .clickable(onClick = onClick)
+            .padding(8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(0.92f)
+                .clip(RoundedCornerShape(10.dp))
+        ) {
+            JarvisAvatar(
+                preset = preset,
+                mood = AvatarMood.IDLE,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+        Spacer(modifier = Modifier.height(7.dp))
+        Text(
+            text = preset.name,
+            color = if (selected) JarvisColors.AccentSoft else JarvisColors.TextSecondary,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium
+        )
+        Text(
+            text = preset.tagline,
+            color = JarvisColors.TextMuted,
+            fontSize = 9.sp,
+            maxLines = 1
+        )
     }
 }
 

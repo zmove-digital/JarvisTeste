@@ -42,6 +42,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -57,6 +58,11 @@ import com.example.jarvisteste.data.GeminiClient
 import com.example.jarvisteste.data.SettingsStore
 import com.example.jarvisteste.service.JarvisListeningService
 import com.example.jarvisteste.service.ListeningPhase
+import com.example.jarvisteste.ui.avatar.AvatarActivity
+import com.example.jarvisteste.ui.avatar.AvatarMood
+import com.example.jarvisteste.ui.avatar.Avatars
+import com.example.jarvisteste.ui.avatar.JarvisAvatar
+import com.example.jarvisteste.ui.avatar.toAvatarMood
 import com.example.jarvisteste.ui.components.JarvisColors
 import kotlinx.coroutines.launch
 import java.util.Locale
@@ -82,6 +88,8 @@ fun HomeScreen(
     val effectiveTranscript = if (serviceRunning) serviceStatus.transcript else recognizedText
     val wakeWord = settings.wakeWord.replaceFirstChar { it.uppercase(Locale.ROOT) }
     val listeningActive = serviceRunning && serviceStatus.phase != ListeningPhase.ERROR
+    val avatarPreset = Avatars.byId(settings.avatarId)
+    val avatarMood = if (serviceRunning) serviceStatus.phase.toAvatarMood() else AvatarMood.IDLE
 
     fun askGemini(message: String) {
         if (!settings.hasApiKey) {
@@ -369,33 +377,20 @@ fun HomeScreen(
             Box(
                 modifier = Modifier
                     .size(190.dp)
-                    .background(
-                        brush = Brush.radialGradient(
-                            colors = listOf(
-                                Color(0xFF245B82),
-                                Color(0xFF152D47),
-                                Color(0xFF101C2B)
-                            )
-                        ),
-                        shape = CircleShape
-                    )
-                    .border(1.dp, Color(0xFF438BB8), CircleShape),
-                contentAlignment = Alignment.Center
+                    .clip(CircleShape)
+                    .border(1.dp, avatarPreset.palette.accent.copy(alpha = 0.65f), CircleShape)
+                    .clickable {
+                        context.startActivity(
+                            Intent(context, AvatarActivity::class.java)
+                                .putExtra(AvatarActivity.EXTRA_DEMO, true)
+                        )
+                    }
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(130.dp)
-                        .background(Color(0xFF183D5B), CircleShape)
-                        .border(1.dp, Color(0xFF66B9E8), CircleShape),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "J",
-                        color = JarvisColors.AccentSoft,
-                        fontSize = 76.sp,
-                        fontWeight = FontWeight.Light
-                    )
-                }
+                JarvisAvatar(
+                    preset = avatarPreset,
+                    mood = avatarMood,
+                    modifier = Modifier.fillMaxSize()
+                )
             }
 
             Spacer(modifier = Modifier.height(32.dp))

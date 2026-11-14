@@ -17,6 +17,9 @@ usuário, sem servidor intermediário.
 - Palavra de ativação configurável (aceita uma palavra ou expressão curta).
 - Silencia os bipes de início/fim do reconhecedor do Google sem afetar mídia
   nem a voz do Jarvis (pode ser desligado em Ajustes).
+- Avatar animado (Aurora, Nexus ou Orbe) na tela inicial e em uma tela cheia que
+  acende o aparelho quando o Jarvis é chamado, mesmo com a tela apagada. O
+  avatar pisca, mexe a boca enquanto fala e mostra "pensando" durante a consulta.
 - Chave da API cifrada com AES/GCM + Android Keystore.
 
 ## Requisitos
@@ -75,6 +78,38 @@ O volume anterior é restaurado automaticamente.
 Se preferir os bipes originais, desligue **Silenciar bipes do reconhecedor** em
 Ajustes. A opção só tem efeito enquanto a escuta contínua está ligada.
 
+## Avatar e despertar da tela
+
+Em **Ajustes → Avatar** você escolhe um dos três avatares vetoriais:
+
+- **Aurora** — acolhedora, cabelos longos e tons rosados.
+- **Nexus** — tecnológico, traços retos e tons azuis.
+- **Orbe** — minimalista, uma esfera de energia em verde-água.
+
+Eles são desenhados em Compose (sem imagens externas), então ficam nítidos em
+qualquer tela e se animam em tempo real: piscam, respiram, olham para cima e
+mostram pontinhos ao pensar, e mexem a boca enquanto o Jarvis fala. A tela
+inicial usa o avatar escolhido; toque nele para abrir a prévia em tela cheia.
+
+Quando o Jarvis ouve a palavra de ativação, ele:
+
+1. publica uma notificação de alta prioridade com *full-screen intent*;
+2. abre a `AvatarActivity` sobre a tela de bloqueio, acendendo a tela;
+3. mantém a tela ligada enquanto a conversa estiver ativa;
+4. fecha a tela do avatar cerca de 5 segundos depois de voltar ao modo de espera
+   pela palavra de ativação.
+
+**Android 14 ou superior:** o sistema exige autorização explícita para abrir
+notificações em tela cheia. Se Ajustes mostrar o aviso **"Permita acender a
+tela"**, toque em **Autorizar** e ative *Permitir notificações de tela cheia*
+para o Jarvis. Sem isso, a notificação vira apenas um aviso e a tela não abre
+sozinha com o aparelho bloqueado.
+
+Para o despertar automático, o aparelho precisa estar bloqueado — que é o estado
+normal logo após a tela apagar. Se a tela apagar mas o aparelho ainda estiver
+destravado, o Android pode bloquear a abertura automática da atividade; nesse
+caso a notificação do avatar continua disponível para toque.
+
 ## Privacidade e segurança
 
 - A chave fica cifrada no armazenamento local; a chave mestra é gerada no
@@ -100,6 +135,12 @@ app/src/main/java/com/example/jarvisteste/
     ├── OnboardingScreen.kt
     ├── HomeScreen.kt
     ├── SettingsScreen.kt
+    ├── avatar/
+    │   ├── Avatars.kt           # presets, paletas e humor do avatar
+    │   ├── JarvisAvatar.kt      # desenho animado em Compose Canvas
+    │   ├── AvatarScreen.kt      # tela cheia + prévia
+    │   ├── AvatarActivity.kt    # atividade sobre a tela de bloqueio
+    │   └── AvatarPresenter.kt   # notificação full-screen + wakelock
     └── components/              # cores, cards e seletor de voz
 ```
 
@@ -115,11 +156,14 @@ O arquivo `jarvis_server.py` é o backend antigo (FastAPI + Gemini no PC) e **n�
   pitch/velocidade e o usuário pode escolher a voz exata ouvindo o exemplo.
 - A cota gratuita do Gemini tem limite de requisições; o app avisa quando ela é
   atingida.
-- Ainda não há avatar com imagem/animação, entrada por texto ou tradução.
+- O avatar é vetorial e desenhado no app; ainda não há foto da galeria nem
+  animações no estilo Live2D.
+- O despertar da tela com o aparelho bloqueado depende do *full-screen intent*;
+  se o fabricante limitar essa permissão, a tela pode não abrir sozinha.
 
 ## Próximos passos
 
-- Avatar: escolher imagem da galeria e animar ao ouvir/falar.
+- Avatar com foto da galeria ou pacote de animações.
 - Ajustar UX de nome personalizado (já configurável em Ajustes).
 - Entrada por texto como alternativa ao microfone.
 - Distribuição assinada (release) e revisão das permissões para publicação.

@@ -133,6 +133,14 @@ class SettingsStore(context: Context) {
         get() = prefs.getBoolean(KEY_SILENCE_BEEPS, true)
         set(value) = prefs.edit().putBoolean(KEY_SILENCE_BEEPS, value).apply()
 
+    /**
+     * Avatar animado exibido na tela inicial e na tela cheia quando o Jarvis
+     * conversa. O id corresponde a um item de [com.example.jarvisteste.ui.avatar.Avatars].
+     */
+    var avatarId: String
+        get() = prefs.getString(KEY_AVATAR_ID, DEFAULT_AVATAR_ID) ?: DEFAULT_AVATAR_ID
+        set(value) = prefs.edit().putString(KEY_AVATAR_ID, value).apply()
+
     companion object {
         private const val PREFS_NAME = "jarvis_settings"
         private const val KEY_API_KEY = "api_key_encrypted"
@@ -144,6 +152,8 @@ class SettingsStore(context: Context) {
         private const val KEY_WAKE_WORD = "wake_word"
         private const val KEY_ALWAYS_LISTENING = "always_listening"
         private const val KEY_SILENCE_BEEPS = "silence_beeps"
+        private const val KEY_AVATAR_ID = "avatar_id"
         const val DEFAULT_WAKE_WORD = "jarvis"
+        const val DEFAULT_AVATAR_ID = "aurora"
     }
 }
