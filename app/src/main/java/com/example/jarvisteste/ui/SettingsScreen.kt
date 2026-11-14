@@ -17,6 +17,8 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -59,6 +61,7 @@ fun SettingsScreen(
     var apiKey by remember { mutableStateOf(settings.apiKey) }
     var showKey by remember { mutableStateOf(false) }
     var wakeWord by remember { mutableStateOf(settings.wakeWord) }
+    var silenceBeeps by remember { mutableStateOf(settings.silenceBeeps) }
     var profileId by rememberSaveable { mutableStateOf(settings.voiceProfileId) }
     var voiceName by remember { mutableStateOf(settings.voiceName) }
     var testing by remember { mutableStateOf(false) }
@@ -71,6 +74,7 @@ fun SettingsScreen(
     fun save(showConfirmation: Boolean = true) {
         settings.apiKey = apiKey
         settings.wakeWord = wakeWord
+        settings.silenceBeeps = silenceBeeps
         settings.voiceProfileId = profile.id
         settings.voiceName = voiceName
         settings.pitch = profile.pitch
@@ -237,6 +241,42 @@ fun SettingsScreen(
                     cursorColor = JarvisColors.Accent
                 )
             )
+
+            Spacer(modifier = Modifier.height(18.dp))
+
+            // ------------------------------------------------ bipes do sistema
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Silenciar bipes do reconhecedor",
+                        color = JarvisColors.TextPrimary,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Spacer(modifier = Modifier.height(3.dp))
+                    Text(
+                        text = "O serviço do Google toca bipes ao iniciar e encerrar a " +
+                            "escuta. Esta opção silencia só o canal de notificações por " +
+                            "instantes; mídia e a voz do Jarvis não são afetadas.",
+                        color = JarvisColors.TextMuted,
+                        fontSize = 11.sp
+                    )
+                }
+                Switch(
+                    checked = silenceBeeps,
+                    onCheckedChange = { silenceBeeps = it },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = JarvisColors.Success,
+                        checkedTrackColor = JarvisColors.SuccessSurface,
+                        uncheckedThumbColor = JarvisColors.TextSecondary,
+                        uncheckedTrackColor = JarvisColors.SurfaceAlt,
+                        uncheckedBorderColor = JarvisColors.Border
+                    )
+                )
+            }
 
             Spacer(modifier = Modifier.height(22.dp))
             HorizontalDivider(color = ColorDivider)

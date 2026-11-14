@@ -22,6 +22,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.example.jarvisteste.MainActivity
 import com.example.jarvisteste.R
+import com.example.jarvisteste.audio.RecognitionBeepSilencer
 import com.example.jarvisteste.audio.TtsManager
 import com.example.jarvisteste.data.GeminiClient
 import com.example.jarvisteste.data.SettingsStore
@@ -58,6 +59,7 @@ class JarvisListeningService : Service(), RecognitionListener {
     private var recognizer: SpeechRecognizer? = null
     private var tts: TtsManager? = null
     private var wakeLock: PowerManager.WakeLock? = null
+    private var beepSilencer: RecognitionBeepSilencer? = null
 
     private var awake = false
     private var speaking = false
@@ -67,12 +69,34 @@ class JarvisListeningService : Service(), RecognitionListener {
 
     private val restartRunnable = Runnable { startListening() }
 
+    /**
+     * O reconhecedor encerra sozinho após ~5 s de silêncio e toca o bipe de
+     * "falha" ANTES do callback onError. Esta tarefa adianta o silêncio para
+     * cobrir esse bipe.
+     */
+    private val preemptiveBeepMute = Runnable {
+        if (!destroyed && !speaking && SettingsStore(this).silenceBeeps) {
+            beepSilencer?.suppress(PREEMPTIVE_WINDOW_MS)
+        }
+    }
+
     private val speechRecognizerIntent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
         putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
         putExtra(RecognizerIntent.EXTRA_LANGUAGE, "pt-BR")
         putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "pt-BR")
         putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
         putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+        // Mantém a sessão de escuta aberta por mais tempo em silêncio.
+        // Sem isso o reconhecedor do Google encerra a cada ~6 s, e cada
+        // reinício toca o "bip" de início/fim (efeito de metralhadora).
+        putExtra(
+            RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS,
+            SILENCE_LENGTH_MS
+        )
+        putExtra(
+            RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS,
+            SILENCE_LENGTH_MS
+        )
     }
 
     override fun onCreate() {
@@ -90,6 +114,7 @@ class JarvisListeningService : Service(), RecognitionListener {
         }
 
         tts = TtsManager(this).also { it.init() }
+        beepSilencer = RecognitionBeepSilencer(this)
 
         if (!SpeechRecognizer.isRecognitionAvailable(this)) {
             failAndStop("Reconhecimento de voz indisponível neste aparelho.")
@@ -122,6 +147,8 @@ class JarvisListeningService : Service(), RecognitionListener {
         recognizer = null
         runCatching { tts?.shutdown() }
         tts = null
+        runCatching { beepSilencer?.release() }
+        beepSilencer = null
         runCatching {
             if (wakeLock?.isHeld == true) wakeLock?.release()
         }
@@ -138,6 +165,12 @@ class JarvisListeningService : Service(), RecognitionListener {
         if (destroyed || speaking) return
         val engine = recognizer ?: return
         mainHandler.removeCallbacks(restartRunnable)
+        mainHandler.removeCallbacks(preemptiveBeepMute)
+        if (SettingsStore(this).silenceBeeps) {
+            // O bipe de "abrindo" toca ~300 ms depois do startListening.
+            beepSilencer?.suppress(START_BEEP_WINDOW_MS)
+            mainHandler.postDelayed(preemptiveBeepMute, PREEMPTIVE_DELAY_MS)
+        }
         try {
             engine.startListening(speechRecognizerIntent)
         } catch (error: Exception) {
@@ -165,10 +198,18 @@ class JarvisListeningService : Service(), RecognitionListener {
 
     override fun onBufferReceived(buffer: ByteArray?) = Unit
 
-    override fun onEndOfSpeech() = Unit
+    override fun onEndOfSpeech() {
+        // O bipe de "sucesso" toca quando o serviço entende que a fala acabou.
+        if (SettingsStore(this).silenceBeeps) {
+            beepSilencer?.suppress(END_OF_SPEECH_WINDOW_MS)
+        }
+    }
 
     override fun onError(error: Int) {
         if (destroyed) return
+        // O bipe de "falha" toca logo após o erro; o de "abrindo" vem no
+        // reinício seguinte e é coberto pela janela do startListening.
+        if (SettingsStore(this).silenceBeeps) beepSilencer?.suppress(TERMINAL_WINDOW_MS)
         when (error) {
             SpeechRecognizer.ERROR_NO_MATCH,
             SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> scheduleRestart(400)
@@ -205,6 +246,10 @@ class JarvisListeningService : Service(), RecognitionListener {
 
     override fun onResults(results: Bundle?) {
         if (destroyed) return
+        // O bipe de "sucesso" pode tocar pouco antes deste callback.
+        if (SettingsStore(this).silenceBeeps) {
+            beepSilencer?.suppress(TERMINAL_WINDOW_MS)
+        }
 
         val text = results
             ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
@@ -218,6 +263,7 @@ class JarvisListeningService : Service(), RecognitionListener {
         }
 
         lastTranscript = text
+        Log.i(TAG, "Transcrição final: \"$text\" (awake=$awake)")
 
         if (awake) {
             handleCommand(text)
@@ -230,6 +276,7 @@ class JarvisListeningService : Service(), RecognitionListener {
             .split(' ')
             .filter { it.isNotBlank() }
         val wakeEnd = findWakeEnd(tokens, wakeTokens)
+        if (wakeEnd >= 0) Log.i(TAG, "Palavra de ativação detectada em: \"$text\"")
 
         if (wakeEnd < 0) {
             // Não era para o Jarvis: ignora e volta a ouvir.
@@ -300,6 +347,8 @@ class JarvisListeningService : Service(), RecognitionListener {
 
     private fun speakInternal(text: String, settings: SettingsStore, onDone: () -> Unit) {
         speaking = true
+        // Garante que nenhum canal continue mudo enquanto o Jarvis fala.
+        beepSilencer?.restore()
         val manager = tts
         if (manager == null) {
             onDone()
@@ -342,28 +391,27 @@ class JarvisListeningService : Service(), RecognitionListener {
     /**
      * Retorna o índice do ÚLTIMO token da palavra de ativação (para o comando
      * começar depois dele), ou -1 se não foi chamado. Aceita nomes com uma ou
-     * várias palavras e tolera um erro de transcrição.
+     * várias palavras e tolera:
+     *  - a transcrição separando o nome em pedaços (ex.: "jar vis");
+     *  - a transcrição juntando tudo em um token (ex.: "eijarvis");
+     *  - um erro de transcrição (distância de edição 1).
      */
     private fun findWakeEnd(tokens: List<String>, wakeTokens: List<String>): Int {
         if (wakeTokens.isEmpty() || tokens.isEmpty()) return -1
         val wakeJoined = wakeTokens.joinToString("")
+        if (wakeJoined.isEmpty()) return -1
 
-        if (wakeTokens.size == 1) {
-            tokens.forEachIndexed { index, token ->
-                if (token == wakeJoined) return index
-                if (wakeJoined.length >= 4 && levenshtein(token, wakeJoined) <= 1) return index
-            }
-            return -1
-        }
-
-        if (wakeJoined.length < 4) return -1
-        for (start in 0..(tokens.size - wakeTokens.size)) {
-            val window = tokens.subList(start, start + wakeTokens.size)
-            val windowJoined = window.joinToString("")
-            if (windowJoined == wakeJoined ||
-                levenshtein(windowJoined, wakeJoined) <= 1
-            ) {
-                return start + wakeTokens.size - 1
+        // Janelas de 1 até (nº de palavras + 1) tokens cobrem nome separado,
+        // nome inteiro num único token e nome com uma palavra a mais.
+        val maxWindow = (wakeTokens.size + 1).coerceAtMost(3)
+        for (size in 1..maxWindow) {
+            if (tokens.size < size) break
+            for (start in 0..(tokens.size - size)) {
+                val windowJoined = tokens.subList(start, start + size).joinToString("")
+                val exact = windowJoined == wakeJoined
+                val close = wakeJoined.length >= 4 &&
+                    levenshtein(windowJoined, wakeJoined) <= 1
+                if (exact || close) return start + size - 1
             }
         }
         return -1
@@ -485,6 +533,19 @@ class JarvisListeningService : Service(), RecognitionListener {
         private const val NOTIFICATION_ID = 42
         private const val ACTION_START = "com.example.jarvisteste.action.START"
         private const val ACTION_STOP = "com.example.jarvisteste.action.STOP"
+
+        /** Tempo de silêncio tolerado antes de o reconhecedor encerrar a sessão. */
+        private const val SILENCE_LENGTH_MS = 120_000L
+
+        // Janelas de silêncio dos bipes do reconhecedor (nunca no canal de mídia).
+        // O bipe de "abrindo" vem ~300 ms após startListening.
+        private const val START_BEEP_WINDOW_MS = 650L
+        // O timeout de silêncio costuma ocorrer entre 5,1 s e 8,5 s; a janela
+        // preventiva cobre essa faixa e é encurtada quando o callback chega.
+        private const val PREEMPTIVE_DELAY_MS = 4_600L
+        private const val PREEMPTIVE_WINDOW_MS = 5_000L
+        private const val END_OF_SPEECH_WINDOW_MS = 900L
+        private const val TERMINAL_WINDOW_MS = 450L
 
         private val _status = MutableStateFlow(
             ListeningStatus(ListeningPhase.STOPPED, "Escuta desligada")

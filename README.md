@@ -15,6 +15,8 @@ usuário, sem servidor intermediário.
 - Escuta contínua em primeiro plano (notificação fixa), inclusive com a tela
   apagada. Só envia ao Gemini depois da palavra de ativação (padrão: **"Jarvis"**).
 - Palavra de ativação configurável (aceita uma palavra ou expressão curta).
+- Silencia os bipes de início/fim do reconhecedor do Google sem afetar mídia
+  nem a voz do Jarvis (pode ser desligado em Ajustes).
 - Chave da API cifrada com AES/GCM + Android Keystore.
 
 ## Requisitos
@@ -43,8 +45,8 @@ usuário, sem servidor intermediário.
 
 - Usa um `ForegroundService` com tipo `microphone` e uma notificação permanente
   com a ação **Desligar**.
-- O reconhecimento de voz é contínuo e local no aparelho; o texto só vai ao
-  Gemini após ouvir a palavra de ativação.
+- O reconhecimento de voz é contínuo e usa o serviço do Google; o texto só vai
+  ao Gemini após ouvir a palavra de ativação.
 - Ao ouvir a palavra sozinha ("Jarvis"), responde "Pois não?" e trata a próxima
   frase como comando.
 - Depois de responder, volta a ouvir a palavra de ativação.
@@ -53,6 +55,21 @@ usuário, sem servidor intermediário.
 - Fabricantes com gestão agressiva de bateria (Xiaomi, Samsung, Motorola) podem
   encerrar o serviço; se isso acontecer, desative a otimização de bateria para
   o Jarvis nas configurações do Android.
+
+### Bipes do reconhecedor
+
+O serviço de voz do Google toca um bipe ao abrir a escuta e outro quando a
+sessão termina (por silêncio ou por fala detectada). Como a escuta contínua
+reinicia a sessão a cada poucos segundos, esses bipes viram um "metralhadora".
+
+O Jarvis silencia apenas os canais de **notificação** e **sistema** em janelas
+curtas: no início da escuta, no fim da fala e nos instantes finais da sessão
+(quando o bipe de falha toca antes do callback de erro). O canal de **mídia**
+nunca é silenciado, então músicas, vídeos e a voz do Jarvis continuam normais.
+O volume anterior é restaurado automaticamente.
+
+Se preferir os bipes originais, desligue **Silenciar bipes do reconhecedor** em
+Ajustes. A opção só tem efeito enquanto a escuta contínua está ligada.
 
 ## Privacidade e segurança
 
@@ -71,7 +88,8 @@ app/src/main/java/com/example/jarvisteste/
 │   ├── SettingsStore.kt         # preferências + perfis de voz
 │   └── GeminiClient.kt          # chamada REST direta ao Gemini + memória
 ├── audio/
-│   └── TtsManager.kt            # TextToSpeech, vozes e conclusão de fala
+│   ├── TtsManager.kt            # TextToSpeech, vozes e conclusão de fala
+│   └── RecognitionBeepSilencer.kt # silencia bipes do reconhecedor
 ├── service/
 │   └── JarvisListeningService.kt# escuta contínua + palavra de ativação
 └── ui/

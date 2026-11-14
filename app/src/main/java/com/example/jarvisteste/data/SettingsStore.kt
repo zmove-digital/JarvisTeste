@@ -125,6 +125,14 @@ class SettingsStore(context: Context) {
         get() = prefs.getBoolean(KEY_ALWAYS_LISTENING, false)
         set(value) = prefs.edit().putBoolean(KEY_ALWAYS_LISTENING, value).apply()
 
+    /**
+     * Silencia os "bipes" do serviço de reconhecimento do Google (início/fim de
+     * escuta) durante janelas curtas. Não afeta mídia nem a voz do Jarvis.
+     */
+    var silenceBeeps: Boolean
+        get() = prefs.getBoolean(KEY_SILENCE_BEEPS, true)
+        set(value) = prefs.edit().putBoolean(KEY_SILENCE_BEEPS, value).apply()
+
     companion object {
         private const val PREFS_NAME = "jarvis_settings"
         private const val KEY_API_KEY = "api_key_encrypted"
@@ -135,6 +143,7 @@ class SettingsStore(context: Context) {
         private const val KEY_RATE = "voice_rate"
         private const val KEY_WAKE_WORD = "wake_word"
         private const val KEY_ALWAYS_LISTENING = "always_listening"
+        private const val KEY_SILENCE_BEEPS = "silence_beeps"
         const val DEFAULT_WAKE_WORD = "jarvis"
     }
 }
