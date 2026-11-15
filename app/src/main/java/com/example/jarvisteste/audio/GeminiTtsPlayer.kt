@@ -79,7 +79,7 @@ class GeminiTtsPlayer(
             var failure: Throwable? = null
             try {
                 val cached = cacheFile(clean, voiceId, style)
-                if (cached.exists() && cached.length() > WAV_HEADER_BYTES) {
+                if (cacheable(clean) && cached.exists() && cached.length() > WAV_HEADER_BYTES) {
                     Log.d(TAG, "Usando áudio em cache (${cached.length()} bytes)")
                     heardAudio = playWav(cached.readBytes(), myGeneration)
                 }
@@ -136,7 +136,7 @@ class GeminiTtsPlayer(
     fun prewarm(text: String, voiceId: String, style: String) {
         if (shutDown) return
         val clean = sanitizeForSpeech(text)
-        if (clean.isBlank()) return
+        if (clean.isBlank() || !cacheable(clean)) return
         val target = cacheFile(clean, voiceId, style)
         if (target.exists() && target.length() > WAV_HEADER_BYTES) return
         if (job?.isActive == true) return
@@ -251,7 +251,9 @@ class GeminiTtsPlayer(
                     "Áudio completo: ${pcm.size()} bytes em " +
                         "${System.currentTimeMillis() - startedAt}ms"
                 )
-                saveWave(cacheFile(text, voiceId, style), pcm.toByteArray())
+                if (cacheable(text)) {
+                    saveWave(cacheFile(text, voiceId, style), pcm.toByteArray())
+                }
                 return true
             }
             if (pcm.size() == 0) Log.w(TAG, "Resposta HTTP sem áudio")
@@ -386,6 +388,9 @@ class GeminiTtsPlayer(
         return File(cacheDir, "$digest.wav")
     }
 
+    /** Só frases curtas valem a pena no cache; respostas longas ocupariam disco à toa. */
+    private fun cacheable(text: String) = text.length <= MAX_CACHEABLE_CHARS
+
     private fun saveWave(target: File, pcm: ByteArray) {
         runCatching {
             val header = ByteBuffer.allocate(WAV_HEADER_BYTES).order(ByteOrder.LITTLE_ENDIAN)
@@ -458,5 +463,6 @@ class GeminiTtsPlayer(
         private const val SAMPLE_RATE = 24_000
         private const val WAV_HEADER_BYTES = 44
         private const val MAX_CACHE_FILES = 40
+        private const val MAX_CACHEABLE_CHARS = 200
     }
 }

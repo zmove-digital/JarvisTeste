@@ -66,11 +66,11 @@ Como a voz online funciona:
    linear de 24 kHz e a voz escolhida em `speech_config`.
 2. Os primeiros bytes chegam em cerca de 1,5 s e já são tocados em um
    `AudioTrack` em modo streaming — o Jarvis não espera a frase inteira.
-3. O áudio completo é guardado em cache (`cacheDir/gemini_tts`, chave
-   SHA-1 de voz + estilo + texto, no máximo 40 arquivos). Frases curtas e
-   repetidas, como "Pois não?" e os exemplos de voz, são reproduzidas sem rede.
-   O "Pois não?" do despertar é sintetizado assim que a escuta contínua liga,
-   então a primeira resposta sai na hora.
+3. O áudio de frases curtas (até 200 caracteres) é guardado em cache
+   (`cacheDir/gemini_tts`, chave SHA-1 de voz + estilo + texto, no máximo 40
+   arquivos). Frases repetidas, como "Pois não?" e os exemplos de voz, são
+   reproduzidas sem rede. O "Pois não?" do despertar é sintetizado assim que a
+   escuta contínua liga, então a primeira resposta sai na hora.
 4. Se nada puder ser tocado (sem internet, cota esgotada, chave inválida), o
    `VoiceManager` cai automaticamente para a voz do aparelho e registra o motivo
    no log, sem interromper a conversa.
