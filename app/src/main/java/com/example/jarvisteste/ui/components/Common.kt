@@ -124,10 +124,11 @@ fun JarvisGhostButton(
 fun SelectableCard(
     selected: Boolean,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit
 ) {
     Surface(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(14.dp),

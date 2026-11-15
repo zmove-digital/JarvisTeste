@@ -92,6 +92,20 @@ class SettingsStore(context: Context) {
         get() = prefs.getBoolean(KEY_ONBOARDED, false)
         set(value) = prefs.edit().putBoolean(KEY_ONBOARDED, value).apply()
 
+    /**
+     * Motor de voz: vozes naturais do Gemini (online) ou vozes do próprio
+     * aparelho (offline). O Gemini é o padrão por soar mais humano.
+     */
+    var voiceEngine: VoiceEngine
+        get() = GeminiVoices.engineOf(prefs.getString(KEY_VOICE_ENGINE, null))
+        set(value) = prefs.edit().putString(KEY_VOICE_ENGINE, value.name.lowercase()).apply()
+
+    /** Voz natural do Gemini escolhida (id da Voice Library). */
+    var geminiVoiceId: String
+        get() = prefs.getString(KEY_GEMINI_VOICE, GeminiVoices.DEFAULT_ID)
+            ?: GeminiVoices.DEFAULT_ID
+        set(value) = prefs.edit().putString(KEY_GEMINI_VOICE, value).apply()
+
     var voiceProfileId: String
         get() = prefs.getString(KEY_VOICE_PROFILE, VoiceProfiles.DEFAULT_ID)
             ?: VoiceProfiles.DEFAULT_ID
@@ -145,6 +159,8 @@ class SettingsStore(context: Context) {
         private const val PREFS_NAME = "jarvis_settings"
         private const val KEY_API_KEY = "api_key_encrypted"
         private const val KEY_ONBOARDED = "onboarded"
+        private const val KEY_VOICE_ENGINE = "voice_engine"
+        private const val KEY_GEMINI_VOICE = "gemini_voice_id"
         private const val KEY_VOICE_PROFILE = "voice_profile"
         private const val KEY_VOICE_NAME = "voice_name"
         private const val KEY_PITCH = "voice_pitch"

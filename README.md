@@ -7,9 +7,13 @@ usuário, sem servidor intermediário.
 ## O que já funciona
 
 - Onboarding no primeiro uso: chave da API (validada na hora) e escolha da voz.
-- Vozes por perfil: feminina, masculina, narrador, robô e animado, com exemplo
-  falado antes de confirmar. Também é possível escolher uma voz específica do
-  motor TTS do aparelho.
+- **Vozes naturais do Gemini** (12 timbres brasileiros, 6 femininos e 6
+  masculinos) para o Jarvis falar. O áudio é recebido em streaming e começa a
+  tocar antes de a frase inteira ficar pronta. Se a voz online falhar (sem
+  internet, cota ou chave), o app usa automaticamente a voz do aparelho.
+- Voz do aparelho como alternativa offline, com perfis (feminina, masculina,
+  narrador, robô, animado) e escolha de uma voz específica do motor TTS.
+  Em todos os casos há um exemplo falado antes de confirmar.
 - Conversa por voz: microfone → Gemini → resposta falada, com histórico curto
   em memória para manter o contexto.
 - Escuta contínua em primeiro plano (notificação fixa), inclusive com a tela
@@ -43,6 +47,33 @@ usuário, sem servidor intermediário.
 4. Na tela principal, ligue **Escuta contínua** e permita microfone e
    notificações.
 5. Diga **"Jarvis, que horas são?"** (ou a palavra configurada).
+
+## Vozes: Gemini TTS e voz do aparelho
+
+Em **Ajustes → Motor de voz** o usuário escolhe entre:
+
+- **Vozes do Jarvis** (recomendada) — geradas pelo Gemini TTS
+  (`gemini-3.8-flash-lite-tts`) com 12 timbres brasileiros selecionados da Voice
+  Library do Google. Cada voz tem um estilo curto (*warm and engaging*, *deep,
+  calm and unhurried*, ...) que mantém o timbre estável entre respostas. Precisa
+  de internet e consome a cota da API.
+- **Voz do aparelho** — usa o motor `TextToSpeech` local, funciona offline e
+  permite escolher o perfil e uma voz específica instalada no celular.
+
+Como a voz online funciona:
+
+1. O texto é enviado a `POST /v1beta/interactions` com `stream: true`, PCM
+   linear de 24 kHz e a voz escolhida em `speech_config`.
+2. Os primeiros bytes chegam em cerca de 1,5 s e já são tocados em um
+   `AudioTrack` em modo streaming — o Jarvis não espera a frase inteira.
+3. O áudio completo é guardado em cache (`cacheDir/gemini_tts`, chave
+   SHA-1 de voz + estilo + texto, no máximo 40 arquivos). Frases curtas e
+   repetidas, como "Pois não?" e os exemplos de voz, são reproduzidas sem rede.
+   O "Pois não?" do despertar é sintetizado assim que a escuta contínua liga,
+   então a primeira resposta sai na hora.
+4. Se nada puder ser tocado (sem internet, cota esgotada, chave inválida), o
+   `VoiceManager` cai automaticamente para a voz do aparelho e registra o motivo
+   no log, sem interromper a conversa.
 
 ## Escuta contínua: como se comporta
 
@@ -115,6 +146,8 @@ caso a notificação do avatar continua disponível para toque.
 - A chave fica cifrada no armazenamento local; a chave mestra é gerada no
   Android Keystore e não sai do aparelho.
 - As chamadas vão direto para `generativelanguage.googleapis.com` (HTTPS).
+  Com as vozes do Gemini, o texto da resposta também é enviado ao mesmo serviço
+  para ser transformado em áudio.
 - O histórico de conversa fica apenas em memória e pode ser limpo em Ajustes.
 
 ## Estrutura
@@ -125,8 +158,11 @@ app/src/main/java/com/example/jarvisteste/
 ├── data/
 │   ├── SecureStore.kt           # AES/GCM + Android Keystore
 │   ├── SettingsStore.kt         # preferências + perfis de voz
+│   ├── VoiceOptions.kt          # motor de voz e as 12 vozes do Gemini
 │   └── GeminiClient.kt          # chamada REST direta ao Gemini + memória
 ├── audio/
+│   ├── VoiceManager.kt          # fala única: Gemini com fallback para o aparelho
+│   ├── GeminiTtsPlayer.kt       # Gemini TTS em streaming, AudioTrack e cache
 │   ├── TtsManager.kt            # TextToSpeech, vozes e conclusão de fala
 │   └── RecognitionBeepSilencer.kt # silencia bipes do reconhecedor
 ├── service/
@@ -152,8 +188,12 @@ O arquivo `jarvis_server.py` é o backend antigo (FastAPI + Gemini no PC) e **n�
 - O reconhecimento de voz depende do serviço do Google (na prática, precisa de
   internet para pt-BR). A palavra de ativação é detectada na transcrição, não é
   um hotword offline.
-- A qualidade e o "gênero" das vozes variam por aparelho; os perfis ajustam
-  pitch/velocidade e o usuário pode escolher a voz exata ouvindo o exemplo.
+- A qualidade e o "gênero" das vozes do aparelho variam por aparelho; os perfis
+  ajustam pitch/velocidade e o usuário pode escolher a voz exata ouvindo o
+  exemplo. (Isso não se aplica às vozes do Gemini, que têm timbres definidos.)
+- As vozes do Gemini precisam de internet e consomem cota da API; o áudio
+  começa a tocar em ~1,5 s, um pouco mais devagar que a voz local. Sem conexão
+  ou cota, o Jarvis continua falando com a voz do aparelho.
 - A cota gratuita do Gemini tem limite de requisições; o app avisa quando ela é
   atingida.
 - O avatar é vetorial e desenhado no app; ainda não há foto da galeria nem

@@ -48,9 +48,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.jarvisteste.audio.TtsManager
-import com.example.jarvisteste.audio.VoiceCatalog
+import com.example.jarvisteste.audio.VoiceManager
 import com.example.jarvisteste.data.GeminiClient
 import com.example.jarvisteste.data.SettingsStore
+import com.example.jarvisteste.data.VoiceEngine
 import com.example.jarvisteste.data.VoiceProfiles
 import com.example.jarvisteste.ui.components.JarvisBackground
 import com.example.jarvisteste.ui.components.JarvisColors
@@ -62,7 +63,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun OnboardingScreen(
     settings: SettingsStore,
-    tts: TtsManager,
+    voice: VoiceManager,
     onFinished: () -> Unit
 ) {
     val context = LocalContext.current
@@ -74,9 +75,12 @@ fun OnboardingScreen(
     var validating by remember { mutableStateOf(false) }
     var keyError by remember { mutableStateOf<String?>(null) }
     var profileId by rememberSaveable { mutableStateOf(settings.voiceProfileId) }
+    var engineName by rememberSaveable { mutableStateOf(settings.voiceEngine.name) }
+    var geminiVoiceId by rememberSaveable { mutableStateOf(settings.geminiVoiceId) }
     var voiceName by remember { mutableStateOf(settings.voiceName) }
 
     val profile = VoiceProfiles.byId(profileId)
+    val engine = VoiceEngine.valueOf(engineName)
 
     BackHandler(enabled = step > 0 && !validating) {
         step -= 1
@@ -108,20 +112,24 @@ fun OnboardingScreen(
 
     fun finish() {
         settings.apiKey = apiKey
+        settings.voiceEngine = engine
+        settings.geminiVoiceId = geminiVoiceId
         settings.voiceProfileId = profile.id
         settings.voiceName = voiceName
         settings.pitch = profile.pitch
         settings.rate = profile.rate
         settings.onboarded = true
-        tts.stop()
+        voice.stop()
         onFinished()
     }
 
     fun previewVoice() {
-        val resolved = VoiceCatalog.selectForProfile(tts.voices, profile, voiceName)?.name
-        tts.speak(
+        voice.speak(
             text = TtsManager.PREVIEW_TEXT,
-            voiceName = resolved,
+            engine = engine,
+            geminiVoiceId = geminiVoiceId,
+            profile = profile,
+            voiceName = voiceName,
             pitch = profile.pitch,
             rate = profile.rate
         )
@@ -198,9 +206,13 @@ fun OnboardingScreen(
                 else -> VoiceStep(
                     voicePicker = {
                         VoicePicker(
-                            voices = tts.voices,
+                            voices = voice.voices,
+                            engine = engine,
+                            geminiVoiceId = geminiVoiceId,
                             profile = profile,
                             selectedVoiceName = voiceName,
+                            onSelectEngine = { engineName = it.name },
+                            onSelectGeminiVoice = { geminiVoiceId = it },
                             onSelectProfile = {
                                 profileId = it.id
                                 voiceName = null

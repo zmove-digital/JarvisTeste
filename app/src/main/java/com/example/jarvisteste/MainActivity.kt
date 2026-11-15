@@ -9,7 +9,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import com.example.jarvisteste.audio.TtsManager
+import com.example.jarvisteste.audio.VoiceManager
 import com.example.jarvisteste.data.SettingsStore
 import com.example.jarvisteste.ui.HomeScreen
 import com.example.jarvisteste.ui.OnboardingScreen
@@ -19,14 +19,14 @@ import com.example.jarvisteste.ui.theme.JarvisTesteTheme
 class MainActivity : ComponentActivity() {
 
     private lateinit var settings: SettingsStore
-    private lateinit var tts: TtsManager
+    private lateinit var voice: VoiceManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
         settings = SettingsStore(this)
-        tts = TtsManager(this).also { it.init() }
+        voice = VoiceManager(this) { settings.apiKey }
 
         setContent {
             JarvisTesteTheme {
@@ -39,29 +39,29 @@ class MainActivity : ComponentActivity() {
                 when (Screen.valueOf(screen)) {
                     Screen.ONBOARDING -> OnboardingScreen(
                         settings = settings,
-                        tts = tts,
+                        voice = voice,
                         onFinished = { screen = Screen.HOME.name }
                     )
 
                     Screen.HOME -> HomeScreen(
                         settings = settings,
-                        tts = tts,
+                        voice = voice,
                         onOpenSettings = {
-                            tts.stop()
+                            voice.stop()
                             screen = Screen.SETTINGS.name
                         }
                     )
 
                     Screen.SETTINGS -> {
                         BackHandler {
-                            tts.stop()
+                            voice.stop()
                             screen = Screen.HOME.name
                         }
                         SettingsScreen(
                             settings = settings,
-                            tts = tts,
+                            voice = voice,
                             onBack = {
-                                tts.stop()
+                                voice.stop()
                                 screen = Screen.HOME.name
                             }
                         )
@@ -72,7 +72,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        tts.shutdown()
+        voice.shutdown()
         super.onDestroy()
     }
 

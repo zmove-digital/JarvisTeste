@@ -53,10 +53,11 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.example.jarvisteste.audio.TtsManager
-import com.example.jarvisteste.audio.VoiceCatalog
+import com.example.jarvisteste.audio.VoiceManager
 import com.example.jarvisteste.data.ConversationMemory
 import com.example.jarvisteste.data.GeminiClient
 import com.example.jarvisteste.data.SettingsStore
+import com.example.jarvisteste.data.VoiceEngine
 import com.example.jarvisteste.data.VoiceProfiles
 import com.example.jarvisteste.ui.avatar.AvatarActivity
 import com.example.jarvisteste.ui.avatar.AvatarMood
@@ -75,7 +76,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun SettingsScreen(
     settings: SettingsStore,
-    tts: TtsManager,
+    voice: VoiceManager,
     onBack: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
@@ -88,6 +89,8 @@ fun SettingsScreen(
     var silenceBeeps by remember { mutableStateOf(settings.silenceBeeps) }
     var profileId by rememberSaveable { mutableStateOf(settings.voiceProfileId) }
     var avatarId by rememberSaveable { mutableStateOf(settings.avatarId) }
+    var engineName by rememberSaveable { mutableStateOf(settings.voiceEngine.name) }
+    var geminiVoiceId by rememberSaveable { mutableStateOf(settings.geminiVoiceId) }
     var voiceName by remember { mutableStateOf(settings.voiceName) }
     var testing by remember { mutableStateOf(false) }
     var feedback by remember { mutableStateOf<String?>(null) }
@@ -95,16 +98,21 @@ fun SettingsScreen(
     var historyCleared by remember { mutableStateOf(false) }
 
     val profile = VoiceProfiles.byId(profileId)
+    val engine = VoiceEngine.valueOf(engineName)
 
     fun save(showConfirmation: Boolean = true) {
         settings.apiKey = apiKey
         settings.wakeWord = wakeWord
         settings.silenceBeeps = silenceBeeps
+        settings.voiceEngine = engine
+        settings.geminiVoiceId = geminiVoiceId
         settings.voiceProfileId = profile.id
         settings.voiceName = voiceName
         settings.pitch = profile.pitch
         settings.rate = profile.rate
         settings.avatarId = avatarId
+        // Deixa o "Pois não?" do despertar pronto na voz recém-escolhida.
+        voice.prewarmPrompt("Pois não?", settings)
         if (showConfirmation) {
             feedback = "Ajustes salvos."
             feedbackIsError = false
@@ -310,19 +318,25 @@ fun SettingsScreen(
 
             // ----------------------------------------------------------- voz
             VoicePicker(
-                voices = tts.voices,
+                voices = voice.voices,
+                engine = engine,
+                geminiVoiceId = geminiVoiceId,
                 profile = profile,
                 selectedVoiceName = voiceName,
+                onSelectEngine = { engineName = it.name },
+                onSelectGeminiVoice = { geminiVoiceId = it },
                 onSelectProfile = {
                     profileId = it.id
                     voiceName = null
                 },
                 onSelectVoice = { voiceName = it },
                 onPreview = {
-                    val resolved = VoiceCatalog.selectForProfile(tts.voices, profile, voiceName)?.name
-                    tts.speak(
+                    voice.speak(
                         text = TtsManager.PREVIEW_TEXT,
-                        voiceName = resolved,
+                        engine = engine,
+                        geminiVoiceId = geminiVoiceId,
+                        profile = profile,
+                        voiceName = voiceName,
                         pitch = profile.pitch,
                         rate = profile.rate
                     )

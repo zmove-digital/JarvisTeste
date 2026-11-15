@@ -23,7 +23,7 @@ import androidx.core.content.ContextCompat
 import com.example.jarvisteste.MainActivity
 import com.example.jarvisteste.R
 import com.example.jarvisteste.audio.RecognitionBeepSilencer
-import com.example.jarvisteste.audio.TtsManager
+import com.example.jarvisteste.audio.VoiceManager
 import com.example.jarvisteste.data.GeminiClient
 import com.example.jarvisteste.data.SettingsStore
 import com.example.jarvisteste.ui.avatar.AvatarPresenter
@@ -58,7 +58,7 @@ class JarvisListeningService : Service(), RecognitionListener {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private var recognizer: SpeechRecognizer? = null
-    private var tts: TtsManager? = null
+    private var voice: VoiceManager? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var beepSilencer: RecognitionBeepSilencer? = null
     private var avatarPresenter: AvatarPresenter? = null
@@ -128,7 +128,9 @@ class JarvisListeningService : Service(), RecognitionListener {
             acquire()
         }
 
-        tts = TtsManager(this).also { it.init() }
+        voice = VoiceManager(this) { SettingsStore(this).apiKey }
+        // Deixa o "Pois não?" do despertar já sintetizado para responder sem espera.
+        voice?.prewarmPrompt("Pois não?", SettingsStore(this))
         beepSilencer = RecognitionBeepSilencer(this)
         avatarPresenter = AvatarPresenter(this)
 
@@ -161,8 +163,8 @@ class JarvisListeningService : Service(), RecognitionListener {
         mainHandler.removeCallbacksAndMessages(null)
         runCatching { recognizer?.destroy() }
         recognizer = null
-        runCatching { tts?.shutdown() }
-        tts = null
+        runCatching { voice?.shutdown() }
+        voice = null
         runCatching { beepSilencer?.release() }
         beepSilencer = null
         avatarPresenter?.hide()
@@ -389,16 +391,14 @@ class JarvisListeningService : Service(), RecognitionListener {
         speaking = true
         // Garante que nenhum canal continue mudo enquanto o Jarvis fala.
         beepSilencer?.restore()
-        val manager = tts
+        val manager = voice
         if (manager == null) {
             onDone()
             return
         }
         manager.speak(
             text = text,
-            voiceName = settings.voiceName,
-            pitch = settings.pitch,
-            rate = settings.rate,
+            settings = settings,
             onDone = onDone
         )
     }

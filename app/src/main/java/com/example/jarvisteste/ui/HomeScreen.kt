@@ -52,8 +52,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
-import com.example.jarvisteste.audio.TtsManager
-import com.example.jarvisteste.audio.VoiceCatalog
+import com.example.jarvisteste.audio.VoiceManager
 import com.example.jarvisteste.data.GeminiClient
 import com.example.jarvisteste.data.SettingsStore
 import com.example.jarvisteste.service.JarvisListeningService
@@ -70,7 +69,7 @@ import java.util.Locale
 @Composable
 fun HomeScreen(
     settings: SettingsStore,
-    tts: TtsManager,
+    voice: VoiceManager,
     onOpenSettings: () -> Unit
 ) {
     val context = LocalContext.current
@@ -101,12 +100,7 @@ fun HomeScreen(
             val result = GeminiClient(settings.apiKey).ask(message)
             result.onSuccess { reply ->
                 status = reply.text
-                val voice = VoiceCatalog.selectForProfile(
-                    tts.voices,
-                    settings.profile,
-                    settings.voiceName
-                )?.name
-                tts.speak(reply.text, voice, settings.pitch, settings.rate)
+                voice.speak(reply.text, settings)
             }.onFailure { error ->
                 status = "Erro: ${error.message ?: "falha desconhecida"}"
             }
