@@ -54,7 +54,7 @@ fun AvatarScreen(
 ) {
     val context = LocalContext.current
     val settings = remember(context) { SettingsStore(context) }
-    val preset = remember(settings.avatarId) { Avatars.byId(settings.avatarId) }
+    val (preset, photoAvatar) = rememberAvatar(settings.avatarId)
     val wakeName = remember(settings.wakeWord) {
         settings.wakeWord.replaceFirstChar { it.uppercase(Locale.ROOT) }
     }
@@ -163,8 +163,9 @@ fun AvatarScreen(
                     .fillMaxWidth(),
                 contentAlignment = Alignment.Center
             ) {
-                JarvisAvatar(
+                AvatarView(
                     preset = preset,
+                    photo = photoAvatar,
                     mood = mood,
                     modifier = Modifier
                         .fillMaxWidth(0.90f)
@@ -172,12 +173,18 @@ fun AvatarScreen(
                 )
             }
 
-            if (mood == AvatarMood.SPEAKING) {
-                SpeakingBars(
-                    color = preset.palette.accent,
-                    modifier = Modifier.align(Alignment.CenterHorizontally)
-                )
-                Spacer(modifier = Modifier.height(12.dp))
+            // Espaço sempre reservado para as barras de fala (30 dp + 12 dp de
+            // respiro). Sem isso, o avatar "pula" para cima e para baixo toda
+            // vez que o Jarvis começa e termina de falar.
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(42.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                if (mood == AvatarMood.SPEAKING) {
+                    SpeakingBars(color = preset.palette.accent)
+                }
             }
 
             if (!demo && status.transcript.isNotBlank()) {

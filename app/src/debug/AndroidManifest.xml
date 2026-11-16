@@ -20,6 +20,16 @@
                 <action android:name="com.example.jarvisteste.DEBUG_SPEAK" />
             </intent-filter>
         </receiver>
+
+        <!-- Importa uma foto de rosto direto de um arquivo, para testar o
+             avatar animado sem passar pelo seletor de imagens. -->
+        <receiver
+            android:name=".debug.DebugPhotoReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.example.jarvisteste.DEBUG_PHOTO" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>

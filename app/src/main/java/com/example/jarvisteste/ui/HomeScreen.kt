@@ -59,8 +59,8 @@ import com.example.jarvisteste.service.JarvisListeningService
 import com.example.jarvisteste.service.ListeningPhase
 import com.example.jarvisteste.ui.avatar.AvatarActivity
 import com.example.jarvisteste.ui.avatar.AvatarMood
-import com.example.jarvisteste.ui.avatar.Avatars
-import com.example.jarvisteste.ui.avatar.JarvisAvatar
+import com.example.jarvisteste.ui.avatar.AvatarView
+import com.example.jarvisteste.ui.avatar.rememberAvatar
 import com.example.jarvisteste.ui.avatar.toAvatarMood
 import com.example.jarvisteste.ui.components.JarvisColors
 import kotlinx.coroutines.launch
@@ -87,8 +87,8 @@ fun HomeScreen(
     val effectiveTranscript = if (serviceRunning) serviceStatus.transcript else recognizedText
     val wakeWord = settings.wakeWord.replaceFirstChar { it.uppercase(Locale.ROOT) }
     val listeningActive = serviceRunning && serviceStatus.phase != ListeningPhase.ERROR
-    val avatarPreset = Avatars.byId(settings.avatarId)
     val avatarMood = if (serviceRunning) serviceStatus.phase.toAvatarMood() else AvatarMood.IDLE
+    val (avatarPreset, avatarPhoto) = rememberAvatar(settings.avatarId)
 
     fun askGemini(message: String) {
         if (!settings.hasApiKey) {
@@ -380,8 +380,9 @@ fun HomeScreen(
                         )
                     }
             ) {
-                JarvisAvatar(
+                AvatarView(
                     preset = avatarPreset,
+                    photo = avatarPhoto,
                     mood = avatarMood,
                     modifier = Modifier.fillMaxSize()
                 )

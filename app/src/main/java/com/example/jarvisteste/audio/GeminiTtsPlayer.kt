@@ -26,6 +26,7 @@ import java.net.URL
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.security.MessageDigest
+import kotlin.math.sqrt
 
 /**
  * Fala usando as vozes naturais do Gemini TTS.
@@ -71,6 +72,7 @@ class GeminiTtsPlayer(
         }
 
         stop()
+        VoiceLevel.beginGemini()
         val myGeneration = generation
         Log.d(TAG, "Sintetizando com voz $voiceId (${clean.length} caracteres)")
         val work = scope.launch(start = CoroutineStart.LAZY) {
@@ -95,7 +97,10 @@ class GeminiTtsPlayer(
                 failure = error
                 Log.w(TAG, "Falha na voz do Gemini", error)
             } finally {
-                if (myGeneration == generation) releaseTrack()
+                if (myGeneration == generation) {
+                    releaseTrack()
+                    VoiceLevel.finish()
+                }
                 if (job === self) job = null
             }
 
@@ -116,6 +121,7 @@ class GeminiTtsPlayer(
         job = null
         runCatching { connection?.disconnect() }
         connection = null
+        VoiceLevel.finish()
         releaseTrack()
     }
 
@@ -335,11 +341,34 @@ class GeminiTtsPlayer(
         synchronized(trackLock) {
             var offset = 0
             while (offset < data.size && myGeneration == generation) {
-                val written = track.write(data, offset, data.size - offset, AudioTrack.WRITE_BLOCKING)
+                val slice = minOf(LEVEL_SLICE_BYTES, data.size - offset)
+                val written = track.write(data, offset, slice, AudioTrack.WRITE_BLOCKING)
                 if (written <= 0) return
+                // Amplitudes pequenas: o avatar recebe o nível do trecho que
+                // acabou de entrar no buffer e mexe a boca junto com o áudio.
+                VoiceLevel.publish(rmsLevel(data, offset, written))
                 offset += written
             }
         }
+    }
+
+    /** Converte PCM 16-bit mono em um nível 0..1 adequado ao avatar. */
+    private fun rmsLevel(data: ByteArray, offset: Int, count: Int): Float {
+        val samples = count / 2
+        if (samples <= 0) return 0f
+        var sum = 0.0
+        var index = offset
+        val end = offset + samples * 2
+        while (index < end) {
+            val sample = ((data[index].toInt() and 0xFF) or (data[index + 1].toInt() shl 8))
+                .toShort()
+                .toInt()
+            sum += sample.toDouble() * sample
+            index += 2
+        }
+        val rms = sqrt(sum / samples) / 32_768.0
+        if (rms < 0.004) return 0f
+        return (sqrt(rms) * 1.9).toFloat().coerceIn(0f, 1f)
     }
 
     private fun playWav(bytes: ByteArray, myGeneration: Int): Boolean {
@@ -464,5 +493,6 @@ class GeminiTtsPlayer(
         private const val WAV_HEADER_BYTES = 44
         private const val MAX_CACHE_FILES = 40
         private const val MAX_CACHEABLE_CHARS = 200
+        private const val LEVEL_SLICE_BYTES = 2_400 // 50 ms de PCM 24 kHz mono
     }
 }

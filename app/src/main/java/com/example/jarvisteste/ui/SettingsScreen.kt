@@ -4,6 +4,10 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -18,6 +22,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -33,6 +38,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -65,6 +71,10 @@ import com.example.jarvisteste.ui.avatar.AvatarPreset
 import com.example.jarvisteste.ui.avatar.AvatarPresenter
 import com.example.jarvisteste.ui.avatar.Avatars
 import com.example.jarvisteste.ui.avatar.JarvisAvatar
+import com.example.jarvisteste.ui.avatar.PhotoAvatar
+import com.example.jarvisteste.ui.avatar.PhotoAvatarImporter
+import com.example.jarvisteste.ui.avatar.PhotoAvatarStore
+import com.example.jarvisteste.ui.avatar.PhotoAvatarView
 import com.example.jarvisteste.ui.components.JarvisBackground
 import com.example.jarvisteste.ui.components.JarvisColors
 import com.example.jarvisteste.ui.components.JarvisGhostButton
@@ -96,6 +106,13 @@ fun SettingsScreen(
     var feedback by remember { mutableStateOf<String?>(null) }
     var feedbackIsError by remember { mutableStateOf(false) }
     var historyCleared by remember { mutableStateOf(false) }
+
+    val photoStore = remember(context) { PhotoAvatarStore(context) }
+    var photoRevision by remember { mutableIntStateOf(0) }
+    var photoImporting by remember { mutableStateOf(false) }
+    var photoMessage by remember { mutableStateOf<String?>(null) }
+    var photoMessageIsError by remember { mutableStateOf(false) }
+    val photoAvatar = remember(photoRevision) { photoStore.load() }
 
     val profile = VoiceProfiles.byId(profileId)
     val engine = VoiceEngine.valueOf(engineName)
@@ -138,6 +155,34 @@ fun SettingsScreen(
             }.onFailure {
                 feedback = it.message ?: "Não foi possível validar a chave."
                 feedbackIsError = true
+            }
+        }
+    }
+
+    val photoPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        photoImporting = true
+        photoMessage = "Analisando o rosto da foto..."
+        photoMessageIsError = false
+        scope.launch {
+            val result = PhotoAvatarImporter(context).import(uri)
+            photoImporting = false
+            result.onSuccess { imported ->
+                if (photoStore.save(imported)) {
+                    photoRevision++
+                    avatarId = PhotoAvatar.ID
+                    save(showConfirmation = false)
+                    photoMessage = "Foto pronta! Toque em \"Ver em tela cheia\" para conferir."
+                    photoMessageIsError = false
+                } else {
+                    photoMessage = "Não consegui salvar a foto neste aparelho."
+                    photoMessageIsError = true
+                }
+            }.onFailure { error ->
+                photoMessage = error.message ?: "Não foi possível usar essa foto."
+                photoMessageIsError = true
             }
         }
     }
@@ -369,6 +414,131 @@ fun SettingsScreen(
                         onClick = { avatarId = preset.id },
                         modifier = Modifier.weight(1f)
                     )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // ----------------------------------------------------- foto do usuário
+            val photoSelected = photoAvatar != null && avatarId == PhotoAvatar.ID
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                color = if (photoSelected) JarvisColors.SurfaceSelected else JarvisColors.SurfaceAlt,
+                border = BorderStroke(
+                    1.dp,
+                    if (photoSelected) JarvisColors.BorderSelected else JarvisColors.Border
+                )
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(enabled = photoAvatar != null) {
+                                if (photoAvatar != null) avatarId = PhotoAvatar.ID
+                            },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(64.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(JarvisColors.Surface),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (photoAvatar != null) {
+                                PhotoAvatarView(
+                                    photo = photoAvatar,
+                                    mood = AvatarMood.IDLE,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            } else {
+                                Text(
+                                    text = "+",
+                                    color = JarvisColors.Accent,
+                                    fontSize = 26.sp
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = if (photoAvatar == null) "Usar uma foto" else "Minha foto",
+                                color = if (photoSelected) JarvisColors.AccentSoft
+                                else JarvisColors.TextPrimary,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = if (photoAvatar == null) {
+                                    "Escolha um rosto (pessoa, anime ou personagem). Ele " +
+                                        "mexe a boca ao falar, pisca e reage a você."
+                                } else {
+                                    "Toque para usar este rosto. A foto fica só neste aparelho."
+                                },
+                                color = JarvisColors.TextMuted,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (photoImporting) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                color = JarvisColors.Accent,
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = "Analisando o rosto...",
+                                color = JarvisColors.AccentSoft,
+                                fontSize = 11.sp
+                            )
+                        } else {
+                            JarvisGhostButton(
+                                text = if (photoAvatar == null) "Escolher foto" else "Trocar foto",
+                                onClick = {
+                                    photoPicker.launch(
+                                        PickVisualMediaRequest(
+                                            ActivityResultContracts.PickVisualMedia.ImageOnly
+                                        )
+                                    )
+                                }
+                            )
+                            if (photoAvatar != null) {
+                                JarvisGhostButton(
+                                    text = "Remover",
+                                    onClick = {
+                                        photoStore.clear()
+                                        photoRevision++
+                                        photoMessage = "Foto removida."
+                                        photoMessageIsError = false
+                                        if (avatarId == PhotoAvatar.ID) {
+                                            avatarId = Avatars.DEFAULT_ID
+                                        }
+                                        save(showConfirmation = false)
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    if (photoMessage != null) {
+                        Text(
+                            text = photoMessage!!,
+                            color = if (photoMessageIsError) JarvisColors.Danger
+                            else JarvisColors.Success,
+                            fontSize = 11.sp,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
                 }
             }
 

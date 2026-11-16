@@ -24,6 +24,10 @@ usuário, sem servidor intermediário.
 - Avatar animado (Aurora, Nexus ou Orbe) na tela inicial e em uma tela cheia que
   acende o aparelho quando o Jarvis é chamado, mesmo com a tela apagada. O
   avatar pisca, mexe a boca enquanto fala e mostra "pensando" durante a consulta.
+- **Avatar com a sua foto**: escolha um retrato (pessoa, anime, personagem) e o
+  Jarvis anima esse rosto — a boca acompanha a fala, os olhos piscam e o rosto
+  reage enquanto você pergunta. O rosto é localizado e animado no próprio
+  aparelho; a imagem nunca é enviada para fora.
 - Chave da API cifrada com AES/GCM + Android Keystore.
 
 ## Requisitos
@@ -122,6 +126,34 @@ qualquer tela e se animam em tempo real: piscam, respiram, olham para cima e
 mostram pontinhos ao pensar, e mexem a boca enquanto o Jarvis fala. A tela
 inicial usa o avatar escolhido; toque nele para abrir a prévia em tela cheia.
 
+### Avatar com foto ("Minha foto")
+
+Na mesma seção **Ajustes → Avatar** há a opção **Minha foto**: toque em
+**Escolher foto** (ou **Trocar foto**) e selecione um retrato. Também é possível
+ver o resultado em tela cheia antes de salvar.
+
+Como funciona, tudo no aparelho:
+
+1. A imagem é corrigida pela rotação do EXIF e reduzida para no máximo 1600 px no
+   maior lado (economia de memória). A cópia tratada fica em `filesDir/avatar`.
+2. O ML Kit (modelo embutido, offline) localiza o maior rosto e extrai os
+   contornos da boca e dos olhos.
+3. Na hora de falar, um `drawBitmapMesh` deforma apenas os "remendos" da boca e
+   dos olhos: a boca abre conforme o volume real do áudio do Gemini (RMS de cada
+   fatia de 50 ms) — ou uma envoltória procedural quando a voz é a do aparelho —
+   os olhos piscam de tempos em tempos e se deslocam de leve ao "pensar", e a
+   cabeça balança sutilmente.
+4. A paleta do fundo (brilho, realce e fundo) é tirada das cores da borda da
+   foto, para o cenário combinar com o retrato. Fotos em preto e branco ganham
+   um tom azulado do tema.
+
+Se a foto não tiver um rosto reconhecível, o app avisa e não troca o avatar.
+Escolha um retrato de frente, bem iluminado e em que o rosto ocupe boa parte do
+quadro — rostos muito pequenos (menos de ~7% da imagem) não são detectados.
+
+O botão **Remover** volta para os avatares vetoriais; os três continuam
+disponíveis e podem ser escolhidos a qualquer momento.
+
 Quando o Jarvis ouve a palavra de ativação, ele:
 
 1. publica uma notificação de alta prioridade com *full-screen intent*;
@@ -163,6 +195,7 @@ app/src/main/java/com/example/jarvisteste/
 ├── audio/
 │   ├── VoiceManager.kt          # fala única: Gemini com fallback para o aparelho
 │   ├── GeminiTtsPlayer.kt       # Gemini TTS em streaming, AudioTrack e cache
+│   ├── VoiceLevel.kt            # nível da fala (RMS do PCM ou envoltória local)
 │   ├── TtsManager.kt            # TextToSpeech, vozes e conclusão de fala
 │   └── RecognitionBeepSilencer.kt # silencia bipes do reconhecedor
 ├── service/
@@ -174,6 +207,10 @@ app/src/main/java/com/example/jarvisteste/
     ├── avatar/
     │   ├── Avatars.kt           # presets, paletas e humor do avatar
     │   ├── JarvisAvatar.kt      # desenho animado em Compose Canvas
+    │   ├── AvatarView.kt        # escolhe entre o avatar vetorial e a foto
+    │   ├── PhotoAvatarStore.kt  # modelo da foto + remendos de boca/olhos
+    │   ├── PhotoAvatarImporter.kt # ML Kit: rosto, contornos, paleta e EXIF
+    │   ├── PhotoAvatarView.kt   # deforma a foto (boca, piscada, balanço)
     │   ├── AvatarScreen.kt      # tela cheia + prévia
     │   ├── AvatarActivity.kt    # atividade sobre a tela de bloqueio
     │   └── AvatarPresenter.kt   # notificação full-screen + wakelock
@@ -196,14 +233,18 @@ O arquivo `jarvis_server.py` é o backend antigo (FastAPI + Gemini no PC) e **n�
   ou cota, o Jarvis continua falando com a voz do aparelho.
 - A cota gratuita do Gemini tem limite de requisições; o app avisa quando ela é
   atingida.
-- O avatar é vetorial e desenhado no app; ainda não há foto da galeria nem
-  animações no estilo Live2D.
+- O avatar com foto é uma animação 2D por deformação da imagem ("talking
+  photo"): boca, piscada e balanço sutil. Não é Live2D nem gera movimento de
+  cabeça em 3D, e depende de um rosto detectável na foto escolhida.
+- A foto do avatar fica só no aparelho (`filesDir/avatar`) e não é enviada a
+  nenhum serviço.
 - O despertar da tela com o aparelho bloqueado depende do *full-screen intent*;
   se o fabricante limitar essa permissão, a tela pode não abrir sozinha.
 
 ## Próximos passos
 
-- Avatar com foto da galeria ou pacote de animações.
+- Melhorar o avatar com foto (expressões, mais movimento de cabeça) e permitir
+  recortar/enquadrar o rosto na importação.
 - Ajustar UX de nome personalizado (já configurável em Ajustes).
 - Entrada por texto como alternativa ao microfone.
 - Distribuição assinada (release) e revisão das permissões para publicação.
