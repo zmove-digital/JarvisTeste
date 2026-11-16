@@ -42,8 +42,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
@@ -52,6 +50,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import com.example.jarvisteste.audio.MicLevel
 import com.example.jarvisteste.audio.VoiceManager
 import com.example.jarvisteste.data.GeminiClient
 import com.example.jarvisteste.data.SettingsStore
@@ -59,9 +58,9 @@ import com.example.jarvisteste.service.JarvisListeningService
 import com.example.jarvisteste.service.ListeningPhase
 import com.example.jarvisteste.ui.avatar.AvatarActivity
 import com.example.jarvisteste.ui.avatar.AvatarMood
-import com.example.jarvisteste.ui.avatar.AvatarView
-import com.example.jarvisteste.ui.avatar.rememberAvatar
+import com.example.jarvisteste.ui.avatar.JarvisOrb
 import com.example.jarvisteste.ui.avatar.toAvatarMood
+import com.example.jarvisteste.ui.components.JarvisBackground
 import com.example.jarvisteste.ui.components.JarvisColors
 import kotlinx.coroutines.launch
 import java.util.Locale
@@ -87,8 +86,11 @@ fun HomeScreen(
     val effectiveTranscript = if (serviceRunning) serviceStatus.transcript else recognizedText
     val wakeWord = settings.wakeWord.replaceFirstChar { it.uppercase(Locale.ROOT) }
     val listeningActive = serviceRunning && serviceStatus.phase != ListeningPhase.ERROR
-    val avatarMood = if (serviceRunning) serviceStatus.phase.toAvatarMood() else AvatarMood.IDLE
-    val (avatarPreset, avatarPhoto) = rememberAvatar(settings.avatarId)
+    val avatarMood = when {
+        serviceRunning -> serviceStatus.phase.toAvatarMood()
+        isListening -> AvatarMood.LISTENING
+        else -> AvatarMood.IDLE
+    }
 
     fun askGemini(message: String) {
         if (!settings.hasApiKey) {
@@ -141,7 +143,9 @@ fun HomeScreen(
                         status = "Pode falar, estou ouvindo."
                     }
 
-                    override fun onRmsChanged(rmsdB: Float) = Unit
+                    override fun onRmsChanged(rmsdB: Float) {
+                        MicLevel.publish(rmsdB)
+                    }
 
                     override fun onBufferReceived(buffer: ByteArray?) = Unit
 
@@ -291,19 +295,7 @@ fun HomeScreen(
         }
     }
 
-    val background = Brush.verticalGradient(
-        colors = listOf(
-            JarvisColors.BackgroundTop,
-            JarvisColors.BackgroundMid,
-            JarvisColors.BackgroundBottom
-        )
-    )
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(background)
-    ) {
+    JarvisBackground {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -342,7 +334,7 @@ fun HomeScreen(
                         shape = RoundedCornerShape(50),
                         color = when {
                             listeningActive -> JarvisColors.SuccessSurface
-                            !settings.hasApiKey -> Color(0xFF3A1D22)
+                            !settings.hasApiKey -> JarvisColors.DangerSurface
                             else -> JarvisColors.Surface
                         }
                     ) {
@@ -370,19 +362,16 @@ fun HomeScreen(
             // ------------------------------------------------- identidade visual
             Box(
                 modifier = Modifier
-                    .size(190.dp)
-                    .clip(CircleShape)
-                    .border(1.dp, avatarPreset.palette.accent.copy(alpha = 0.65f), CircleShape)
+                    .size(240.dp)
                     .clickable {
                         context.startActivity(
                             Intent(context, AvatarActivity::class.java)
                                 .putExtra(AvatarActivity.EXTRA_DEMO, true)
                         )
-                    }
+                    },
+                contentAlignment = Alignment.Center
             ) {
-                AvatarView(
-                    preset = avatarPreset,
-                    photo = avatarPhoto,
+                JarvisOrb(
                     mood = avatarMood,
                     modifier = Modifier.fillMaxSize()
                 )
@@ -412,8 +401,8 @@ fun HomeScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable(onClick = onOpenSettings),
-                    shape = RoundedCornerShape(14.dp),
-                    color = Color(0xFF3A1D22)
+                    shape = RoundedCornerShape(6.dp),
+                    color = JarvisColors.DangerSurface
                 ) {
                     Text(
                         text = "Falta configurar sua chave do Gemini. Toque em AJUSTES.",
@@ -517,14 +506,18 @@ fun HomeScreen(
                     .background(
                         when {
                             listeningActive -> JarvisColors.SuccessSurface
-                            isListening -> Color(0xFFB83232)
-                            else -> Color(0xFF17699A)
+                            isListening -> JarvisColors.DangerSurface
+                            else -> JarvisColors.SurfaceSelected
                         },
                         CircleShape
                     )
                     .border(
                         1.dp,
-                        if (listeningActive) JarvisColors.Success else Color(0xFF61B9EA),
+                        when {
+                            listeningActive -> JarvisColors.Success
+                            isListening -> JarvisColors.Danger
+                            else -> JarvisColors.Accent
+                        },
                         CircleShape
                     )
                     .clickable {
@@ -557,7 +550,7 @@ fun HomeScreen(
 
             Text(
                 text = if (listeningActive) "ESCUTA CONTÍNUA ATIVA" else "CONTROLE DE VOZ",
-                color = if (listeningActive) JarvisColors.Success else Color(0xFFB8D9EF),
+                color = if (listeningActive) JarvisColors.Success else JarvisColors.AccentSoft,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 2.sp
@@ -587,7 +580,7 @@ fun HomeScreen(
 
             Text(
                 text = "SEU ASSISTENTE. SUAS REGRAS.",
-                color = Color(0xFF718DA5),
+                color = JarvisColors.TextMuted,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Medium,
                 letterSpacing = 1.5.sp,
@@ -598,7 +591,7 @@ fun HomeScreen(
 
             Text(
                 text = "JARVIS  •  GEMINI DIRETO NO APARELHO",
-                color = Color(0xFF8BBFE0),
+                color = JarvisColors.TextSecondary,
                 fontSize = 11.sp,
                 textAlign = TextAlign.Center
             )

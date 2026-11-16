@@ -2,27 +2,19 @@ package com.example.jarvisteste.ui
 
 import android.content.Intent
 import android.net.Uri
-import android.os.Build
 import android.provider.Settings
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -38,7 +30,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -46,7 +37,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
@@ -67,14 +57,8 @@ import com.example.jarvisteste.data.VoiceEngine
 import com.example.jarvisteste.data.VoiceProfiles
 import com.example.jarvisteste.ui.avatar.AvatarActivity
 import com.example.jarvisteste.ui.avatar.AvatarMood
-import com.example.jarvisteste.ui.avatar.AvatarPreset
 import com.example.jarvisteste.ui.avatar.AvatarPresenter
-import com.example.jarvisteste.ui.avatar.Avatars
-import com.example.jarvisteste.ui.avatar.JarvisAvatar
-import com.example.jarvisteste.ui.avatar.PhotoAvatar
-import com.example.jarvisteste.ui.avatar.PhotoAvatarImporter
-import com.example.jarvisteste.ui.avatar.PhotoAvatarStore
-import com.example.jarvisteste.ui.avatar.PhotoAvatarView
+import com.example.jarvisteste.ui.avatar.JarvisOrb
 import com.example.jarvisteste.ui.components.JarvisBackground
 import com.example.jarvisteste.ui.components.JarvisColors
 import com.example.jarvisteste.ui.components.JarvisGhostButton
@@ -98,7 +82,6 @@ fun SettingsScreen(
     var wakeWord by remember { mutableStateOf(settings.wakeWord) }
     var silenceBeeps by remember { mutableStateOf(settings.silenceBeeps) }
     var profileId by rememberSaveable { mutableStateOf(settings.voiceProfileId) }
-    var avatarId by rememberSaveable { mutableStateOf(settings.avatarId) }
     var engineName by rememberSaveable { mutableStateOf(settings.voiceEngine.name) }
     var geminiVoiceId by rememberSaveable { mutableStateOf(settings.geminiVoiceId) }
     var voiceName by remember { mutableStateOf(settings.voiceName) }
@@ -106,13 +89,6 @@ fun SettingsScreen(
     var feedback by remember { mutableStateOf<String?>(null) }
     var feedbackIsError by remember { mutableStateOf(false) }
     var historyCleared by remember { mutableStateOf(false) }
-
-    val photoStore = remember(context) { PhotoAvatarStore(context) }
-    var photoRevision by remember { mutableIntStateOf(0) }
-    var photoImporting by remember { mutableStateOf(false) }
-    var photoMessage by remember { mutableStateOf<String?>(null) }
-    var photoMessageIsError by remember { mutableStateOf(false) }
-    val photoAvatar = remember(photoRevision) { photoStore.load() }
 
     val profile = VoiceProfiles.byId(profileId)
     val engine = VoiceEngine.valueOf(engineName)
@@ -127,7 +103,6 @@ fun SettingsScreen(
         settings.voiceName = voiceName
         settings.pitch = profile.pitch
         settings.rate = profile.rate
-        settings.avatarId = avatarId
         // Deixa o "Pois não?" do despertar pronto na voz recém-escolhida.
         voice.prewarmPrompt("Pois não?", settings)
         if (showConfirmation) {
@@ -155,34 +130,6 @@ fun SettingsScreen(
             }.onFailure {
                 feedback = it.message ?: "Não foi possível validar a chave."
                 feedbackIsError = true
-            }
-        }
-    }
-
-    val photoPicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickVisualMedia()
-    ) { uri: Uri? ->
-        if (uri == null) return@rememberLauncherForActivityResult
-        photoImporting = true
-        photoMessage = "Analisando o rosto da foto..."
-        photoMessageIsError = false
-        scope.launch {
-            val result = PhotoAvatarImporter(context).import(uri)
-            photoImporting = false
-            result.onSuccess { imported ->
-                if (photoStore.save(imported)) {
-                    photoRevision++
-                    avatarId = PhotoAvatar.ID
-                    save(showConfirmation = false)
-                    photoMessage = "Foto pronta! Toque em \"Ver em tela cheia\" para conferir."
-                    photoMessageIsError = false
-                } else {
-                    photoMessage = "Não consegui salvar a foto neste aparelho."
-                    photoMessageIsError = true
-                }
-            }.onFailure { error ->
-                photoMessage = error.message ?: "Não foi possível usar essa foto."
-                photoMessageIsError = true
             }
         }
     }
@@ -287,7 +234,7 @@ fun SettingsScreen(
             }
 
             Spacer(modifier = Modifier.height(22.dp))
-            HorizontalDivider(color = ColorDivider)
+            HorizontalDivider(color = JarvisColors.Border)
             Spacer(modifier = Modifier.height(22.dp))
 
             // ------------------------------------------------------ ativação
@@ -348,7 +295,7 @@ fun SettingsScreen(
                     checked = silenceBeeps,
                     onCheckedChange = { silenceBeeps = it },
                     colors = SwitchDefaults.colors(
-                        checkedThumbColor = JarvisColors.Success,
+                        checkedThumbColor = JarvisColors.Accent,
                         checkedTrackColor = JarvisColors.SuccessSurface,
                         uncheckedThumbColor = JarvisColors.TextSecondary,
                         uncheckedTrackColor = JarvisColors.SurfaceAlt,
@@ -358,7 +305,7 @@ fun SettingsScreen(
             }
 
             Spacer(modifier = Modifier.height(22.dp))
-            HorizontalDivider(color = ColorDivider)
+            HorizontalDivider(color = JarvisColors.Border)
             Spacer(modifier = Modifier.height(22.dp))
 
             // ----------------------------------------------------------- voz
@@ -389,157 +336,30 @@ fun SettingsScreen(
             )
 
             Spacer(modifier = Modifier.height(22.dp))
-            HorizontalDivider(color = ColorDivider)
+            HorizontalDivider(color = JarvisColors.Border)
             Spacer(modifier = Modifier.height(22.dp))
 
             // ---------------------------------------------------------- avatar
             JarvisLabel("Avatar")
             Spacer(modifier = Modifier.height(10.dp))
             Text(
-                text = "Quem aparece na tela quando o Jarvis conversa com você. " +
-                    "O avatar anima enquanto ouve, pensa e fala.",
+                text = "O orbe de energia do Jarvis. Ele vibra de forma frenética com a " +
+                    "sua voz e pulsa quando o Jarvis responde.",
                 color = JarvisColors.TextMuted,
                 fontSize = 12.sp
             )
             Spacer(modifier = Modifier.height(14.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(190.dp),
+                contentAlignment = Alignment.Center
             ) {
-                Avatars.all.forEach { preset ->
-                    AvatarOption(
-                        preset = preset,
-                        selected = preset.id == avatarId,
-                        onClick = { avatarId = preset.id },
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // ----------------------------------------------------- foto do usuário
-            val photoSelected = photoAvatar != null && avatarId == PhotoAvatar.ID
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
-                color = if (photoSelected) JarvisColors.SurfaceSelected else JarvisColors.SurfaceAlt,
-                border = BorderStroke(
-                    1.dp,
-                    if (photoSelected) JarvisColors.BorderSelected else JarvisColors.Border
+                JarvisOrb(
+                    mood = AvatarMood.IDLE,
+                    modifier = Modifier.size(180.dp)
                 )
-            ) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable(enabled = photoAvatar != null) {
-                                if (photoAvatar != null) avatarId = PhotoAvatar.ID
-                            },
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(64.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(JarvisColors.Surface),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            if (photoAvatar != null) {
-                                PhotoAvatarView(
-                                    photo = photoAvatar,
-                                    mood = AvatarMood.IDLE,
-                                    modifier = Modifier.fillMaxSize()
-                                )
-                            } else {
-                                Text(
-                                    text = "+",
-                                    color = JarvisColors.Accent,
-                                    fontSize = 26.sp
-                                )
-                            }
-                        }
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = if (photoAvatar == null) "Usar uma foto" else "Minha foto",
-                                color = if (photoSelected) JarvisColors.AccentSoft
-                                else JarvisColors.TextPrimary,
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = if (photoAvatar == null) {
-                                    "Escolha um rosto (pessoa, anime ou personagem). Ele " +
-                                        "mexe a boca ao falar, pisca e reage a você."
-                                } else {
-                                    "Toque para usar este rosto. A foto fica só neste aparelho."
-                                },
-                                color = JarvisColors.TextMuted,
-                                fontSize = 11.sp
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        if (photoImporting) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(18.dp),
-                                color = JarvisColors.Accent,
-                                strokeWidth = 2.dp
-                            )
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Text(
-                                text = "Analisando o rosto...",
-                                color = JarvisColors.AccentSoft,
-                                fontSize = 11.sp
-                            )
-                        } else {
-                            JarvisGhostButton(
-                                text = if (photoAvatar == null) "Escolher foto" else "Trocar foto",
-                                onClick = {
-                                    photoPicker.launch(
-                                        PickVisualMediaRequest(
-                                            ActivityResultContracts.PickVisualMedia.ImageOnly
-                                        )
-                                    )
-                                }
-                            )
-                            if (photoAvatar != null) {
-                                JarvisGhostButton(
-                                    text = "Remover",
-                                    onClick = {
-                                        photoStore.clear()
-                                        photoRevision++
-                                        photoMessage = "Foto removida."
-                                        photoMessageIsError = false
-                                        if (avatarId == PhotoAvatar.ID) {
-                                            avatarId = Avatars.DEFAULT_ID
-                                        }
-                                        save(showConfirmation = false)
-                                    }
-                                )
-                            }
-                        }
-                    }
-
-                    if (photoMessage != null) {
-                        Text(
-                            text = photoMessage!!,
-                            color = if (photoMessageIsError) JarvisColors.Danger
-                            else JarvisColors.Success,
-                            fontSize = 11.sp,
-                            modifier = Modifier.padding(top = 4.dp)
-                        )
-                    }
-                }
             }
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -559,12 +379,9 @@ fun SettingsScreen(
                 Spacer(modifier = Modifier.height(10.dp))
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(6.dp),
                     color = JarvisColors.SurfaceAlt,
-                    border = androidx.compose.foundation.BorderStroke(
-                        1.dp,
-                        JarvisColors.BorderSelected
-                    )
+                    border = BorderStroke(1.dp, JarvisColors.BorderSelected)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
@@ -600,7 +417,7 @@ fun SettingsScreen(
             }
 
             Spacer(modifier = Modifier.height(22.dp))
-            HorizontalDivider(color = ColorDivider)
+            HorizontalDivider(color = JarvisColors.Border)
             Spacer(modifier = Modifier.height(22.dp))
 
             // ------------------------------------------------------- conversa
@@ -625,7 +442,7 @@ fun SettingsScreen(
             )
 
             Spacer(modifier = Modifier.height(22.dp))
-            HorizontalDivider(color = ColorDivider)
+            HorizontalDivider(color = JarvisColors.Border)
             Spacer(modifier = Modifier.height(22.dp))
 
             JarvisLabel("Sobre")
@@ -666,53 +483,3 @@ private fun rememberFullScreenIntentAllowed(): Boolean {
 
     return allowed
 }
-
-@Composable
-private fun AvatarOption(
-    preset: AvatarPreset,
-    selected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Column(
-        modifier = modifier
-            .clip(RoundedCornerShape(14.dp))
-            .background(if (selected) JarvisColors.SurfaceSelected else JarvisColors.SurfaceAlt)
-            .border(
-                width = 1.dp,
-                color = if (selected) JarvisColors.BorderSelected else JarvisColors.Border,
-                shape = RoundedCornerShape(14.dp)
-            )
-            .clickable(onClick = onClick)
-            .padding(8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(0.92f)
-                .clip(RoundedCornerShape(10.dp))
-        ) {
-            JarvisAvatar(
-                preset = preset,
-                mood = AvatarMood.IDLE,
-                modifier = Modifier.fillMaxSize()
-            )
-        }
-        Spacer(modifier = Modifier.height(7.dp))
-        Text(
-            text = preset.name,
-            color = if (selected) JarvisColors.AccentSoft else JarvisColors.TextSecondary,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Medium
-        )
-        Text(
-            text = preset.tagline,
-            color = JarvisColors.TextMuted,
-            fontSize = 9.sp,
-            maxLines = 1
-        )
-    }
-}
-
-private val ColorDivider = androidx.compose.ui.graphics.Color(0xFF263747)

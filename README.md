@@ -4,6 +4,10 @@ Assistente de voz em português brasileiro, feito em Kotlin + Jetpack Compose.
 O app é **autônomo**: fala direto com o Gemini usando a chave da API do próprio
 usuário, sem servidor intermediário.
 
+A interface toda tem um visual **"quase TRON"**: fundo quase preto, grade neon,
+linhas e brilhos em ciano e rótulos em caixa alta. O avatar é um **orbe de
+energia** que reage à voz.
+
 ## O que já funciona
 
 - Onboarding no primeiro uso: chave da API (validada na hora) e escolha da voz.
@@ -21,13 +25,10 @@ usuário, sem servidor intermediário.
 - Palavra de ativação configurável (aceita uma palavra ou expressão curta).
 - Silencia os bipes de início/fim do reconhecedor do Google sem afetar mídia
   nem a voz do Jarvis (pode ser desligado em Ajustes).
-- Avatar animado (Aurora, Nexus ou Orbe) na tela inicial e em uma tela cheia que
-  acende o aparelho quando o Jarvis é chamado, mesmo com a tela apagada. O
-  avatar pisca, mexe a boca enquanto fala e mostra "pensando" durante a consulta.
-- **Avatar com a sua foto**: escolha um retrato (pessoa, anime, personagem) e o
-  Jarvis anima esse rosto — a boca acompanha a fala, os olhos piscam e o rosto
-  reage enquanto você pergunta. O rosto é localizado e animado no próprio
-  aparelho; a imagem nunca é enviada para fora.
+- **Orbe de energia reativo** na tela inicial e em uma tela cheia que acende o
+  aparelho quando o Jarvis é chamado, mesmo com a tela apagada. O orbe vibra de
+  forma frenética com a sua voz, gira mais rápido ao "pensar" e pulsa quando o
+  Jarvis responde.
 - Chave da API cifrada com AES/GCM + Android Keystore.
 
 ## Requisitos
@@ -113,53 +114,32 @@ O volume anterior é restaurado automaticamente.
 Se preferir os bipes originais, desligue **Silenciar bipes do reconhecedor** em
 Ajustes. A opção só tem efeito enquanto a escuta contínua está ligada.
 
-## Avatar e despertar da tela
+## O orbe e o despertar da tela
 
-Em **Ajustes → Avatar** você escolhe um dos três avatares vetoriais:
+O avatar do Jarvis é um único **orbe de energia** desenhado inteiramente em
+Compose (`Canvas`), sem imagens externas. Ele reage em tempo real às ondas de
+voz:
 
-- **Aurora** — acolhedora, cabelos longos e tons rosados.
-- **Nexus** — tecnológico, traços retos e tons azuis.
-- **Orbe** — minimalista, uma esfera de energia em verde-água.
+- **Você fala:** o nível do microfone (`onRmsChanged` do reconhecedor) chega pelo
+  `MicLevel`. O orbe vibra de forma frenética, com ataque rápido e queda mais
+  lenta, e a cada sílaba o núcleo treme e os raios de energia se alongam.
+- **O Jarvis fala:** o nível do áudio (`VoiceLevel`, medido no PCM do Gemini ou
+  por uma envoltória procedural na voz do aparelho) faz o orbe pulsar.
+- **Pensando:** os anéis giram mais rápido e a energia oscila.
+- **Parado:** apenas respira devagar.
 
-Eles são desenhados em Compose (sem imagens externas), então ficam nítidos em
-qualquer tela e se animam em tempo real: piscam, respiram, olham para cima e
-mostram pontinhos ao pensar, e mexem a boca enquanto o Jarvis fala. A tela
-inicial usa o avatar escolhido; toque nele para abrir a prévia em tela cheia.
-
-### Avatar com foto ("Minha foto")
-
-Na mesma seção **Ajustes → Avatar** há a opção **Minha foto**: toque em
-**Escolher foto** (ou **Trocar foto**) e selecione um retrato. Também é possível
-ver o resultado em tela cheia antes de salvar.
-
-Como funciona, tudo no aparelho:
-
-1. A imagem é corrigida pela rotação do EXIF e reduzida para no máximo 1600 px no
-   maior lado (economia de memória). A cópia tratada fica em `filesDir/avatar`.
-2. O ML Kit (modelo embutido, offline) localiza o maior rosto e extrai os
-   contornos da boca e dos olhos.
-3. Na hora de falar, um `drawBitmapMesh` deforma apenas os "remendos" da boca e
-   dos olhos: a boca abre conforme o volume real do áudio do Gemini (RMS de cada
-   fatia de 50 ms) — ou uma envoltória procedural quando a voz é a do aparelho —
-   os olhos piscam de tempos em tempos e se deslocam de leve ao "pensar", e a
-   cabeça balança sutilmente.
-4. A paleta do fundo (brilho, realce e fundo) é tirada das cores da borda da
-   foto, para o cenário combinar com o retrato. Fotos em preto e branco ganham
-   um tom azulado do tema.
-
-Se a foto não tiver um rosto reconhecível, o app avisa e não troca o avatar.
-Escolha um retrato de frente, bem iluminado e em que o rosto ocupe boa parte do
-quadro — rostos muito pequenos (menos de ~7% da imagem) não são detectados.
-
-O botão **Remover** volta para os avatares vetoriais; os três continuam
-disponíveis e podem ser escolhidos a qualquer momento.
+Três anéis giram em velocidades e sentidos diferentes, há raios ao redor do
+núcleo e um traçador branco circula por cima — o conjunto dá o movimento inquieto
+típico das interfaces do filme. Em **Ajustes → Avatar** há uma prévia do orbe e o
+botão **Ver em tela cheia**; na tela inicial, toque no orbe para abrir a mesma
+prévia.
 
 Quando o Jarvis ouve a palavra de ativação, ele:
 
 1. publica uma notificação de alta prioridade com *full-screen intent*;
 2. abre a `AvatarActivity` sobre a tela de bloqueio, acendendo a tela;
 3. mantém a tela ligada enquanto a conversa estiver ativa;
-4. fecha a tela do avatar cerca de 5 segundos depois de voltar ao modo de espera
+4. fecha a tela do orbe cerca de 5 segundos depois de voltar ao modo de espera
    pela palavra de ativação.
 
 **Android 14 ou superior:** o sistema exige autorização explícita para abrir
@@ -171,7 +151,7 @@ sozinha com o aparelho bloqueado.
 Para o despertar automático, o aparelho precisa estar bloqueado — que é o estado
 normal logo após a tela apagar. Se a tela apagar mas o aparelho ainda estiver
 destravado, o Android pode bloquear a abertura automática da atividade; nesse
-caso a notificação do avatar continua disponível para toque.
+caso a notificação do orbe continua disponível para toque.
 
 ## Privacidade e segurança
 
@@ -181,6 +161,8 @@ caso a notificação do avatar continua disponível para toque.
   Com as vozes do Gemini, o texto da resposta também é enviado ao mesmo serviço
   para ser transformado em áudio.
 - O histórico de conversa fica apenas em memória e pode ser limpo em Ajustes.
+- O orbe é desenhado em código: nada de áudio, imagem ou vídeo sai do aparelho
+  por causa do avatar.
 
 ## Estrutura
 
@@ -195,7 +177,8 @@ app/src/main/java/com/example/jarvisteste/
 ├── audio/
 │   ├── VoiceManager.kt          # fala única: Gemini com fallback para o aparelho
 │   ├── GeminiTtsPlayer.kt       # Gemini TTS em streaming, AudioTrack e cache
-│   ├── VoiceLevel.kt            # nível da fala (RMS do PCM ou envoltória local)
+│   ├── VoiceLevel.kt            # nível da fala do Jarvis (PCM ou envoltória local)
+│   ├── MicLevel.kt              # nível da sua voz (RMS do reconhecedor)
 │   ├── TtsManager.kt            # TextToSpeech, vozes e conclusão de fala
 │   └── RecognitionBeepSilencer.kt # silencia bipes do reconhecedor
 ├── service/
@@ -204,17 +187,14 @@ app/src/main/java/com/example/jarvisteste/
     ├── OnboardingScreen.kt
     ├── HomeScreen.kt
     ├── SettingsScreen.kt
+    ├── theme/                   # esquema "quase TRON" sempre escuro
     ├── avatar/
-    │   ├── Avatars.kt           # presets, paletas e humor do avatar
-    │   ├── JarvisAvatar.kt      # desenho animado em Compose Canvas
-    │   ├── AvatarView.kt        # escolhe entre o avatar vetorial e a foto
-    │   ├── PhotoAvatarStore.kt  # modelo da foto + remendos de boca/olhos
-    │   ├── PhotoAvatarImporter.kt # ML Kit: rosto, contornos, paleta e EXIF
-    │   ├── PhotoAvatarView.kt   # deforma a foto (boca, piscada, balanço)
-    │   ├── AvatarScreen.kt      # tela cheia + prévia
+    │   ├── JarvisOrb.kt         # o orbe: desenho e reação às ondas de voz
+    │   ├── AvatarMood.kt        # humor do orbe (ocioso/ouvindo/pensando/falando)
+    │   ├── AvatarScreen.kt      # tela cheia + medidor de nível
     │   ├── AvatarActivity.kt    # atividade sobre a tela de bloqueio
     │   └── AvatarPresenter.kt   # notificação full-screen + wakelock
-    └── components/              # cores, cards e seletor de voz
+    └── components/              # cores, grade TRON, cards e seletor de voz
 ```
 
 O arquivo `jarvis_server.py` é o backend antigo (FastAPI + Gemini no PC) e **não
@@ -233,18 +213,15 @@ O arquivo `jarvis_server.py` é o backend antigo (FastAPI + Gemini no PC) e **n�
   ou cota, o Jarvis continua falando com a voz do aparelho.
 - A cota gratuita do Gemini tem limite de requisições; o app avisa quando ela é
   atingida.
-- O avatar com foto é uma animação 2D por deformação da imagem ("talking
-  photo"): boca, piscada e balanço sutil. Não é Live2D nem gera movimento de
-  cabeça em 3D, e depende de um rosto detectável na foto escolhida.
-- A foto do avatar fica só no aparelho (`filesDir/avatar`) e não é enviada a
-  nenhum serviço.
+- O orbe é uma animação 2D em `Canvas`: representa a voz por intensidade, não
+  por um espectro de frequências real. A leitura do nível depende do
+  `onRmsChanged`, que alguns aparelhos reportam de forma mais grosseira.
 - O despertar da tela com o aparelho bloqueado depende do *full-screen intent*;
   se o fabricante limitar essa permissão, a tela pode não abrir sozinha.
 
 ## Próximos passos
 
-- Melhorar o avatar com foto (expressões, mais movimento de cabeça) e permitir
-  recortar/enquadrar o rosto na importação.
+- Ajustar o orbe para variar a cor por humor e testar em telas menores.
 - Ajustar UX de nome personalizado (já configurável em Ajustes).
 - Entrada por texto como alternativa ao microfone.
 - Distribuição assinada (release) e revisão das permissões para publicação.

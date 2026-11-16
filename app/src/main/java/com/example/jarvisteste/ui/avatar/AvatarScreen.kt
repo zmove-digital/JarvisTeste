@@ -33,16 +33,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.jarvisteste.audio.MicLevel
+import com.example.jarvisteste.audio.VoiceLevel
+import com.example.jarvisteste.audio.VoiceSource
 import com.example.jarvisteste.data.SettingsStore
 import com.example.jarvisteste.service.JarvisListeningService
 import com.example.jarvisteste.service.ListeningPhase
+import com.example.jarvisteste.ui.components.JarvisBackground
 import com.example.jarvisteste.ui.components.JarvisColors
 import kotlinx.coroutines.delay
 import java.util.Locale
@@ -54,7 +56,6 @@ fun AvatarScreen(
 ) {
     val context = LocalContext.current
     val settings = remember(context) { SettingsStore(context) }
-    val (preset, photoAvatar) = rememberAvatar(settings.avatarId)
     val wakeName = remember(settings.wakeWord) {
         settings.wakeWord.replaceFirstChar { it.uppercase(Locale.ROOT) }
     }
@@ -109,15 +110,7 @@ fun AvatarScreen(
         else -> "Ouvindo por \"$wakeName\"..."
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(preset.palette.backdropTop, preset.palette.backdropBottom)
-                )
-            )
-    ) {
+    JarvisBackground {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -131,8 +124,8 @@ fun AvatarScreen(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = if (demo) "PRÉVIA DO AVATAR" else wakeName.uppercase(Locale.ROOT),
-                        color = preset.palette.accent,
+                        text = if (demo) "PRÉVIA DO ORBE" else wakeName.uppercase(Locale.ROOT),
+                        color = JarvisColors.Accent,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 3.sp
@@ -140,7 +133,7 @@ fun AvatarScreen(
                     Spacer(modifier = Modifier.height(3.dp))
                     Text(
                         text = title,
-                        color = Color.White,
+                        color = JarvisColors.TextPrimary,
                         fontSize = 21.sp,
                         fontWeight = FontWeight.Medium
                     )
@@ -150,7 +143,7 @@ fun AvatarScreen(
                     color = JarvisColors.TextSecondary,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.5.sp,
+                    letterSpacing = 2.sp,
                     modifier = Modifier
                         .clickable(onClick = onClose)
                         .padding(horizontal = 6.dp, vertical = 10.dp)
@@ -163,43 +156,39 @@ fun AvatarScreen(
                     .fillMaxWidth(),
                 contentAlignment = Alignment.Center
             ) {
-                AvatarView(
-                    preset = preset,
-                    photo = photoAvatar,
+                JarvisOrb(
                     mood = mood,
+                    demo = demo,
                     modifier = Modifier
-                        .fillMaxWidth(0.90f)
-                        .aspectRatio(0.84f)
+                        .fillMaxWidth(0.86f)
+                        .aspectRatio(1f)
                 )
             }
 
-            // Espaço sempre reservado para as barras de fala (30 dp + 12 dp de
-            // respiro). Sem isso, o avatar "pula" para cima e para baixo toda
-            // vez que o Jarvis começa e termina de falar.
+            // O medidor ocupa sempre a mesma altura, então nada "pula" quando o
+            // Jarvis começa ou termina de falar.
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(42.dp),
                 contentAlignment = Alignment.Center
             ) {
-                if (mood == AvatarMood.SPEAKING) {
-                    SpeakingBars(color = preset.palette.accent)
-                }
+                TronMeter(mood = mood)
             }
 
             if (!demo && status.transcript.isNotBlank()) {
                 Surface(
-                    shape = RoundedCornerShape(18.dp),
+                    shape = RoundedCornerShape(6.dp),
                     color = JarvisColors.Surface.copy(alpha = 0.72f),
                     border = androidx.compose.foundation.BorderStroke(
                         1.dp,
-                        JarvisColors.Border.copy(alpha = 0.8f)
+                        JarvisColors.Border.copy(alpha = 0.9f)
                     )
                 ) {
                     Column(modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp)) {
                         Text(
                             text = "VOCÊ DISSE",
-                            color = preset.palette.accent,
+                            color = JarvisColors.Accent,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
                             letterSpacing = 2.sp
@@ -207,7 +196,7 @@ fun AvatarScreen(
                         Spacer(modifier = Modifier.height(5.dp))
                         Text(
                             text = status.transcript,
-                            color = Color.White,
+                            color = JarvisColors.TextPrimary,
                             fontSize = 16.sp
                         )
                     }
@@ -230,35 +219,51 @@ fun AvatarScreen(
     }
 }
 
+/**
+ * Barras de nível que acompanham a voz. Sempre visíveis (na altura mínima
+ * quando ninguém fala), para o layout não mudar de tamanho.
+ */
 @Composable
-private fun SpeakingBars(
-    color: Color,
-    modifier: Modifier = Modifier
-) {
-    val transition = rememberInfiniteTransition(label = "speaking-bars")
+private fun TronMeter(mood: AvatarMood) {
+    val mic by MicLevel.level.collectAsState()
+    val voice by VoiceLevel.level.collectAsState()
+    val source by VoiceLevel.source.collectAsState()
+
+    val live = when {
+        source != VoiceSource.NONE -> (0.28f + voice * 0.85f).coerceIn(0f, 1f)
+        mood == AvatarMood.LISTENING -> mic.coerceIn(0f, 1f)
+        mood == AvatarMood.THINKING -> 0.35f
+        else -> 0.08f
+    }
+
+    val transition = rememberInfiniteTransition(label = "tron-meter")
     Row(
-        modifier = modifier.height(30.dp),
+        modifier = Modifier.height(30.dp),
         horizontalArrangement = Arrangement.spacedBy(5.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        repeat(5) { index ->
-            val level by transition.animateFloat(
-                initialValue = 0.22f,
+        repeat(9) { index ->
+            val wave by transition.animateFloat(
+                initialValue = 0.32f,
                 targetValue = 1f,
                 animationSpec = infiniteRepeatable(
                     animation = tween(
-                        durationMillis = 300 + index * 80,
+                        durationMillis = 260 + index * 55,
                         easing = FastOutSlowInEasing
                     ),
                     repeatMode = RepeatMode.Reverse
                 ),
-                label = "bar-$index"
+                label = "meter-$index"
             )
+            val scale = (live * wave).coerceIn(0.08f, 1f)
             Box(
                 modifier = Modifier
-                    .width(5.dp)
-                    .height(30.dp * level)
-                    .background(color.copy(alpha = 0.85f), RoundedCornerShape(3.dp))
+                    .width(4.dp)
+                    .height(30.dp * scale)
+                    .background(
+                        JarvisColors.Accent.copy(alpha = 0.4f + 0.55f * live),
+                        RoundedCornerShape(2.dp)
+                    )
             )
         }
     }

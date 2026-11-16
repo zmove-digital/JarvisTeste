@@ -22,6 +22,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.example.jarvisteste.MainActivity
 import com.example.jarvisteste.R
+import com.example.jarvisteste.audio.MicLevel
 import com.example.jarvisteste.audio.RecognitionBeepSilencer
 import com.example.jarvisteste.audio.VoiceManager
 import com.example.jarvisteste.data.GeminiClient
@@ -174,6 +175,7 @@ class JarvisListeningService : Service(), RecognitionListener {
         }
         wakeLock = null
         scope.cancel()
+        MicLevel.reset()
         _running.value = false
         _status.value = ListeningStatus(ListeningPhase.STOPPED, "Escuta desligada")
         super.onDestroy()
@@ -214,7 +216,9 @@ class JarvisListeningService : Service(), RecognitionListener {
 
     override fun onBeginningOfSpeech() = Unit
 
-    override fun onRmsChanged(rmsdB: Float) = Unit
+    override fun onRmsChanged(rmsdB: Float) {
+        MicLevel.publish(rmsdB)
+    }
 
     override fun onBufferReceived(buffer: ByteArray?) = Unit
 
@@ -345,6 +349,8 @@ class JarvisListeningService : Service(), RecognitionListener {
         mainHandler.removeCallbacks(endAwakeRunnable)
         speaking = true
         awake = false
+        // O microfone não está mais alimentando o orbe: zera o nível.
+        MicLevel.reset()
         publishStatus(ListeningPhase.THINKING, "Consultando o Gemini...", transcript = command)
         Log.i(TAG, "Enviando comando ao Gemini: \"$command\"")
 

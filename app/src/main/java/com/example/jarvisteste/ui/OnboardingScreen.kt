@@ -5,8 +5,6 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,7 +17,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
@@ -36,8 +33,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -53,6 +48,8 @@ import com.example.jarvisteste.data.GeminiClient
 import com.example.jarvisteste.data.SettingsStore
 import com.example.jarvisteste.data.VoiceEngine
 import com.example.jarvisteste.data.VoiceProfiles
+import com.example.jarvisteste.ui.avatar.AvatarMood
+import com.example.jarvisteste.ui.avatar.JarvisOrb
 import com.example.jarvisteste.ui.components.JarvisBackground
 import com.example.jarvisteste.ui.components.JarvisColors
 import com.example.jarvisteste.ui.components.JarvisGhostButton
@@ -233,27 +230,10 @@ fun OnboardingScreen(
 private fun WelcomeStep(onStart: () -> Unit) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
-            modifier = Modifier
-                .size(150.dp)
-                .background(
-                    brush = Brush.radialGradient(
-                        colors = listOf(
-                            Color(0xFF245B82),
-                            Color(0xFF152D47),
-                            Color(0xFF101C2B)
-                        )
-                    ),
-                    shape = CircleShape
-                )
-                .border(1.dp, Color(0xFF438BB8), CircleShape),
+            modifier = Modifier.size(180.dp),
             contentAlignment = Alignment.Center
         ) {
-            Text(
-                text = "J",
-                color = JarvisColors.AccentSoft,
-                fontSize = 62.sp,
-                fontWeight = FontWeight.Light
-            )
+            JarvisOrb(mood = AvatarMood.IDLE, modifier = Modifier.fillMaxSize())
         }
 
         Spacer(modifier = Modifier.height(30.dp))
