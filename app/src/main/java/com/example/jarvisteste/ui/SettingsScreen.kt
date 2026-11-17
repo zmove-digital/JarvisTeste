@@ -76,6 +76,7 @@ fun SettingsScreen(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val fullScreenAllowed = rememberFullScreenIntentAllowed()
+    val overlayAllowed = rememberOverlayAllowed()
 
     var apiKey by remember { mutableStateOf(settings.apiKey) }
     var showKey by remember { mutableStateOf(false) }
@@ -420,6 +421,68 @@ fun SettingsScreen(
             HorizontalDivider(color = JarvisColors.Border)
             Spacer(modifier = Modifier.height(22.dp))
 
+            // ------------------------------------------------- ações no aparelho
+            JarvisLabel("Ações no aparelho")
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(
+                text = "O Jarvis pode abrir aplicativos, pesquisar na web, ligar em viva-voz, " +
+                    "controlar a música e criar alarmes e timers. Telefone e contatos são " +
+                    "pedidos ao ligar a Escuta contínua.",
+                color = JarvisColors.TextMuted,
+                fontSize = 12.sp
+            )
+
+            if (overlayAllowed) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(
+                    text = "Permissão para abrir apps sobre outros apps: ativa.",
+                    color = JarvisColors.Success,
+                    fontSize = 12.sp
+                )
+            } else {
+                Spacer(modifier = Modifier.height(12.dp))
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(6.dp),
+                    color = JarvisColors.SurfaceAlt,
+                    border = BorderStroke(1.dp, JarvisColors.BorderSelected)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            text = "Permita abrir apps sobre outros apps",
+                            color = JarvisColors.AccentSoft,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Sem isso, o Jarvis só abre aplicativos quando o app já está " +
+                                "na tela. Ative \"Aparecer sobre outros apps\".",
+                            color = JarvisColors.TextMuted,
+                            fontSize = 11.sp
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        JarvisGhostButton(
+                            text = "Autorizar",
+                            onClick = {
+                                runCatching {
+                                    context.startActivity(
+                                        Intent(
+                                            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                            Uri.parse("package:${context.packageName}")
+                                        )
+                                    )
+                                }
+                            }
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(22.dp))
+            HorizontalDivider(color = JarvisColors.Border)
+            Spacer(modifier = Modifier.height(22.dp))
+
             // ------------------------------------------------------- conversa
             JarvisLabel("Conversa")
             Spacer(modifier = Modifier.height(10.dp))
@@ -461,6 +524,27 @@ fun SettingsScreen(
             Spacer(modifier = Modifier.height(22.dp))
         }
     }
+}
+
+@Composable
+private fun rememberOverlayAllowed(): Boolean {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var allowed by remember {
+        mutableStateOf(Settings.canDrawOverlays(context))
+    }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                allowed = Settings.canDrawOverlays(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    return allowed
 }
 
 @Composable

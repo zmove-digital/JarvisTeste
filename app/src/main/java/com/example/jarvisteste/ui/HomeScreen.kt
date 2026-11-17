@@ -50,6 +50,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import com.example.jarvisteste.actions.JarvisActions
 import com.example.jarvisteste.audio.MicLevel
 import com.example.jarvisteste.audio.VoiceManager
 import com.example.jarvisteste.data.GeminiClient
@@ -99,7 +100,7 @@ fun HomeScreen(
         }
         status = "Consultando o Gemini..."
         scope.launch {
-            val result = GeminiClient(settings.apiKey).ask(message)
+            val result = GeminiClient(settings.apiKey).ask(message, JarvisActions.tools(context))
             result.onSuccess { reply ->
                 status = reply.text
                 voice.speak(reply.text, settings)
@@ -254,7 +255,11 @@ fun HomeScreen(
             stopContinuous()
             return
         }
-        val required = mutableListOf(Manifest.permission.RECORD_AUDIO)
+        val required = mutableListOf(
+            Manifest.permission.RECORD_AUDIO,
+            Manifest.permission.CALL_PHONE,
+            Manifest.permission.READ_CONTACTS
+        )
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             required.add(Manifest.permission.POST_NOTIFICATIONS)
         }

@@ -20,6 +20,9 @@ energia** que reage à voz.
   Em todos os casos há um exemplo falado antes de confirmar.
 - Conversa por voz: microfone → Gemini → resposta falada, com histórico curto
   em memória para manter o contexto.
+- **Ações no aparelho por *function calling***: além de conversar, o Jarvis
+  executa comandos como abrir aplicativos, pesquisar na web, ligar em viva-voz,
+  controlar a mídia e criar alarmes/timers (veja a seção abaixo).
 - Escuta contínua em primeiro plano (notificação fixa), inclusive com a tela
   apagada. Só envia ao Gemini depois da palavra de ativação (padrão: **"Jarvis"**).
 - Palavra de ativação configurável (aceita uma palavra ou expressão curta).
@@ -49,8 +52,9 @@ energia** que reage à voz.
    ```
 
 3. Abra o app, informe sua chave, valide e escolha a voz.
-4. Na tela principal, ligue **Escuta contínua** e permita microfone e
-   notificações.
+4. Na tela principal, ligue **Escuta contínua** e permita microfone,
+   notificações, telefone e contatos. Em **Ajustes → Ações no aparelho**,
+   autorize *Aparecer sobre outros apps* para o Jarvis abrir apps sozinho.
 5. Diga **"Jarvis, que horas são?"** (ou a palavra configurada).
 
 ## Vozes: Gemini TTS e voz do aparelho
@@ -153,6 +157,61 @@ normal logo após a tela apagar. Se a tela apagar mas o aparelho ainda estiver
 destravado, o Android pode bloquear a abertura automática da atividade; nesse
 caso a notificação do orbe continua disponível para toque.
 
+## Ações no aparelho (function calling)
+
+Além de conversar, o Jarvis **executa comandos** no celular. Em vez de adivinhar
+a intenção com expressões regulares, o app declara ao Gemini um conjunto de
+ferramentas (*function calling*); o modelo escolhe a ferramenta e os parâmetros,
+o app roda a ação **localmente** e devolve o resultado, e só então o Jarvis fala
+a confirmação. Assim, "abra o Spotify e toque a Playlist Rock/Pop" vira uma
+chamada real ao sistema, e não um chute.
+
+Ferramentas disponíveis (Nível 1 — comandos de sistema):
+
+| Ferramenta           | Exemplo de fala                                | O que faz |
+| -------------------- | ---------------------------------------------- | --------- |
+| `abrir_app`          | "abre o Spotify"                               | Abre qualquer app instalado, casando o nome falado (tolerante a erros de transcrição). |
+| `pesquisar_web`      | "pesquisa sobre o filme TRON"                  | Abre o navegador com a busca. |
+| `ligar_telefone`     | "liga para o João" / "liga para 11 91234-5678" | Ligação telefônica normal, com viva-voz automático. Aceita contato da agenda ou número. |
+| `controlar_midia`    | "pausa a música", "próxima faixa"              | Play/pause/próxima/anterior/parar no que estiver tocando. |
+| `definir_alarme`     | "me acorda às 7h30"                            | Cria um alarme no relógio do aparelho. |
+| `definir_timer`      | "timer de 5 minutos"                           | Cria um timer (contagem regressiva). |
+
+A ligação usa `Intent.ACTION_CALL` e ativa o viva-voz pelo `AudioManager`
+(`setCommunicationDevice` no Android 12+, `isSpeakerphoneOn` abaixo disso). O
+acesso a contatos usa o `ContentResolver` da agenda.
+
+### Permissões e ajustes
+
+- **Telefone e contatos** (`CALL_PHONE`, `READ_CONTACTS`) são pedidos ao ligar a
+  **Escuta contínua**. Sem `READ_CONTACTS` o Jarvis só liga para números ditos
+  em voz alta; sem `CALL_PHONE` ele avisa que falta permissão.
+- **Aparecer sobre outros apps** (`SYSTEM_ALERT_WINDOW`): permite que o serviço
+  em segundo plano abra atividades (app, navegador, discador). Em **Ajustes →
+  Ações no aparelho** há o botão **Autorizar**; sem isso, o Jarvis só abre apps
+  quando a tela do Jarvis já está em primeiro plano.
+- **Listar apps instalados** (`QUERY_ALL_PACKAGES`): necessária para montar o
+  índice de aplicativos e casar o nome falado com o pacote. É aceitável para uso
+  pessoal (sideload), mas **bloqueia a publicação na Play Store**.
+- **Alarme** (`com.android.alarm.permission.SET_ALARM`) e **áudio**
+  (`MODIFY_AUDIO_SETTINGS`) completam o conjunto.
+
+### Níveis de confiabilidade (o que ainda não é feito)
+
+O que está implementado é o **Nível 1**: comandos de sistema padronizados do
+Android — confiáveis e sem depender da interface de outros apps. Ficam de fora:
+
+- **Nível 2 — deep links dos apps.** Dá para abrir uma playlist do Spotify
+  (`spotify:playlist:<id>`) ou uma conversa do WhatsApp (`wa.me/<numero>`), mas
+  **tocar sozinho** não é garantido: o intent de reprodução do Spotify foi
+  descontinuado e não há API pública para iniciar ligação pelo WhatsApp. Abrir é
+  confiável; iniciar a reprodução/chamada, não.
+- **Nível 3 — Serviço de Acessibilidade.** É o que permitiria literalmente
+  dirigir a interface (abrir WhatsApp → buscar contato → tocar em "chamar" →
+  ativar viva-voz; ou tocar Play no Spotify). Poderoso, porém frágil: quebra
+  quando o app muda de layout e exige o usuário ativar a acessibilidade. A base
+  de *function calling* já está pronta para receber essas ferramentas depois.
+
 ## Privacidade e segurança
 
 - A chave fica cifrada no armazenamento local; a chave mestra é gerada no
@@ -163,6 +222,9 @@ caso a notificação do orbe continua disponível para toque.
 - O histórico de conversa fica apenas em memória e pode ser limpo em Ajustes.
 - O orbe é desenhado em código: nada de áudio, imagem ou vídeo sai do aparelho
   por causa do avatar.
+- As ações rodam **no próprio aparelho**: abrir app, ligar, controlar mídia e
+  criar alarmes usam APIs locais do Android. Só o texto do comando e o resultado
+  da ação trafegam até o Gemini, como parte da conversa.
 
 ## Estrutura
 
@@ -173,7 +235,11 @@ app/src/main/java/com/example/jarvisteste/
 │   ├── SecureStore.kt           # AES/GCM + Android Keystore
 │   ├── SettingsStore.kt         # preferências + perfis de voz
 │   ├── VoiceOptions.kt          # motor de voz e as 12 vozes do Gemini
-│   └── GeminiClient.kt          # chamada REST direta ao Gemini + memória
+│   └── GeminiClient.kt          # REST direto ao Gemini, function calling e memória
+├── actions/
+│   ├── JarvisActions.kt         # as ações no aparelho expostas como ferramentas
+│   ├── ToolSpec.kt              # declaração e esquema JSON das ferramentas
+│   └── AppIndex.kt              # índice dos apps instalados + casamento por nome
 ├── audio/
 │   ├── VoiceManager.kt          # fala única: Gemini com fallback para o aparelho
 │   ├── GeminiTtsPlayer.kt       # Gemini TTS em streaming, AudioTrack e cache
@@ -218,10 +284,24 @@ O arquivo `jarvis_server.py` é o backend antigo (FastAPI + Gemini no PC) e **n�
   `onRmsChanged`, que alguns aparelhos reportam de forma mais grosseira.
 - O despertar da tela com o aparelho bloqueado depende do *full-screen intent*;
   se o fabricante limitar essa permissão, a tela pode não abrir sozinha.
+- As ações são de **Nível 1** (comandos de sistema). "Tocar a playlist" abre o
+  Spotify, mas iniciar a reprodução sozinho não é garantido; ligação pelo
+  WhatsApp e autoplay dependem de um Serviço de Acessibilidade (Nível 3), ainda
+  não implementado.
+- O índice de apps exige `QUERY_ALL_PACKAGES` (impede publicar na Play Store) e o
+  casamento por nome pode errar em apps com nomes parecidos; nesse caso, fale o
+  nome mais completo.
+- Abrir apps a partir do serviço em segundo plano depende de *Aparecer sobre
+  outros apps*; sem essa permissão, o Jarvis só abre apps com a própria tela em
+  primeiro plano.
 
 ## Próximos passos
 
+- Adicionar deep links (Nível 2) para abrir playlists e conversas específicas.
+- Avaliar um `AccessibilityService` (Nível 3) para autoplay no Spotify e ligação
+  pelo WhatsApp, como ferramentas extras.
 - Ajustar o orbe para variar a cor por humor e testar em telas menores.
 - Ajustar UX de nome personalizado (já configurável em Ajustes).
 - Entrada por texto como alternativa ao microfone.
-- Distribuição assinada (release) e revisão das permissões para publicação.
+- Distribuição assinada (release) e revisão das permissões para publicação
+  (remover `QUERY_ALL_PACKAGES` ou justificar o uso).

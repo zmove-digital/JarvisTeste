@@ -22,6 +22,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.example.jarvisteste.MainActivity
 import com.example.jarvisteste.R
+import com.example.jarvisteste.actions.JarvisActions
 import com.example.jarvisteste.audio.MicLevel
 import com.example.jarvisteste.audio.RecognitionBeepSilencer
 import com.example.jarvisteste.audio.VoiceManager
@@ -364,7 +365,8 @@ class JarvisListeningService : Service(), RecognitionListener {
                 return@launch
             }
 
-            val result = GeminiClient(settings.apiKey).ask(command)
+            val result = GeminiClient(settings.apiKey)
+                .ask(command, JarvisActions.tools(this@JarvisListeningService))
             withContext(Dispatchers.Main.immediate) {
                 result.onSuccess { reply ->
                     Log.i(TAG, "Resposta do Gemini (${reply.text.length} caracteres)")

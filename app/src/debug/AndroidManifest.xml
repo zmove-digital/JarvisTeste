@@ -20,6 +20,16 @@
                 <action android:name="com.example.jarvisteste.DEBUG_SPEAK" />
             </intent-filter>
         </receiver>
+
+        <!-- Envia um comando ao Gemini (com as ações do aparelho) para testar as
+             ferramentas sem falar: use o extra "text" com o comando desejado. -->
+        <receiver
+            android:name=".debug.DebugCommandReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.example.jarvisteste.DEBUG_COMMAND" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>
