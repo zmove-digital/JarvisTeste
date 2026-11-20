@@ -12,8 +12,10 @@ import android.provider.AlarmClock
 import android.provider.ContactsContract
 import android.view.KeyEvent
 import androidx.core.content.ContextCompat
+import com.example.jarvisteste.accessibility.WhatsAppCallBridge
 import kotlinx.coroutines.delay
 import java.net.URLEncoder
+import java.text.Normalizer
 
 private const val SPOTIFY_PACKAGE = "com.spotify.music"
 private const val WHATSAPP_PACKAGE = "com.whatsapp"
@@ -89,25 +91,37 @@ object JarvisActions {
                 "Nome da playlist, álbum, artista ou faixa; ou link do Spotify " +
                     "(open.spotify.com/... ou spotify:...)."
             ),
+            "tipo" to choice(
+                "Tipo de conteúdo. Use \"playlist\" quando o usuário pedir uma playlist.",
+                listOf("playlist", "album", "artista", "faixa", "busca")
+            ),
             required = listOf("consulta")
         ),
         run = { args ->
             val consulta = args.optString("consulta").trim()
+            val tipo = args.optString("tipo").trim().lowercase()
             when {
                 consulta.isEmpty() -> "Não entendi o que abrir no Spotify."
                 !isInstalled(context, SPOTIFY_PACKAGE) ->
                     "O Spotify não está instalado neste aparelho."
 
                 else -> {
+                    val encoded = URLEncoder.encode(consulta, Charsets.UTF_8.name())
                     val target = spotifyTarget(consulta)
-                    val uri = target?.uri ?: "spotify:search:" + URLEncoder.encode(
-                        consulta.replace('/', ' '), Charsets.UTF_8.name()
-                    ).replace("+", "%20")
-                    val fallback = target?.webUrl ?: "https://open.spotify.com/search/" +
-                        URLEncoder.encode(consulta, Charsets.UTF_8.name())
-                    val opened = launch(context, uri, SPOTIFY_PACKAGE) ||
-                        launch(context, fallback, SPOTIFY_PACKAGE) ||
-                        launch(context, fallback)
+                    // A busca por playlist abre direto na aba "Playlists" do app.
+                    val searchPath = if (tipo == "playlist") {
+                        "https://open.spotify.com/search/$encoded/playlists"
+                    } else {
+                        "https://open.spotify.com/search/$encoded"
+                    }
+                    val uri = target?.uri ?: "spotify:search:" +
+                        URLEncoder.encode(consulta.replace('/', ' '), Charsets.UTF_8.name())
+                            .replace("+", "%20")
+                    val primary = target?.uri ?: searchPath
+                    val secondary = target?.webUrl ?: uri
+                    val opened = launch(context, primary, SPOTIFY_PACKAGE) ||
+                        launch(context, secondary, SPOTIFY_PACKAGE) ||
+                        launch(context, secondary)
 
                     when {
                         !opened -> "Encontrei o Spotify, mas não consegui abrir o conteúdo."
@@ -138,24 +152,146 @@ object JarvisActions {
     private fun openWhatsappChat(context: Context): ToolSpec = ToolSpec(
         name = "abrir_conversa_whatsapp",
         description = "Abre a conversa do WhatsApp com um contato da agenda ou com um número " +
-            "informado. Apenas abre o chat: não envia mensagem e não faz ligação. Use quando " +
-            "o usuário pedir para conversar, mandar mensagem ou falar com alguém no " +
-            "WhatsApp ou Zap. Para ligação telefônica normal, use ligar_telefone.",
+            "informado, ou liga para ele pelo WhatsApp em viva-voz. Sempre pede confirmação " +
+            "do contato antes de agir. Use quando o usuário pedir para conversar, mandar " +
+            "mensagem, falar, chamar ou ligar para alguém no WhatsApp ou Zap. Para ligação " +
+            "telefônica normal (não WhatsApp), use ligar_telefone.",
         parameters = schema(
             "contato" to text("Nome do contato ou número de telefone, como o usuário falou."),
+            "acao" to choice(
+                "O que fazer com o contato. Use \"ligar\" se o usuário pediu chamada, " +
+                    "ligação ou viva-voz; use \"abrir\" para apenas abrir a conversa.",
+                listOf("abrir", "ligar")
+            ),
             required = listOf("contato")
         ),
         run = { args ->
             val contato = args.optString("contato").trim()
-            val resolved = resolveNumber(context, contato)
+            val acao = args.optString("acao").trim().lowercase()
+            val action = if (acao == "ligar") ContactAction.CALL_WHATSAPP else ContactAction.OPEN_CHAT
+            val candidates = resolveContacts(context, contato)
             when {
-                resolved != null -> openWhatsapp(context, resolved.first, resolved.second)
+                candidates.isNotEmpty() -> askContactConfirmation(action, candidates)
                 !hasPermission(context, Manifest.permission.READ_CONTACTS) ->
                     "Não tenho acesso à sua agenda. Permita contatos ou fale o número com DDD."
                 else -> "Não encontrei nenhum contato chamado \"$contato\" na agenda."
             }
         }
     )
+
+    private enum class ContactAction { OPEN_CHAT, CALL_WHATSAPP }
+
+    private data class ContactMatch(val name: String, val number: String)
+    private data class PendingContact(val action: ContactAction, val candidates: List<ContactMatch>)
+
+    @Volatile
+    private var pendingContact: PendingContact? = null
+
+    /** A janela de fala após confirmar pode ser mais longa. */
+    fun hasPendingContact(): Boolean = pendingContact != null
+
+    private fun askContactConfirmation(action: ContactAction, candidates: List<ContactMatch>): String {
+        pendingContact = PendingContact(action, candidates)
+        val verb = if (action == ContactAction.CALL_WHATSAPP) "ligar para" else "abrir a conversa com"
+        return if (candidates.size == 1) {
+            val contact = candidates[0]
+            "Encontrei ${contact.name}. Confirma $verb ${contact.name}? Diga sim ou não."
+        } else {
+            val options = candidates.mapIndexed { index, contact -> "${index + 1}) ${contact.name}" }
+                .joinToString(", ")
+            "Encontrei ${candidates.size} contatos: $options. Diga o número da opção ou não para cancelar."
+        }
+    }
+
+    /**
+     * Interpreta a resposta à confirmação antes de mandar o comando ao Gemini.
+     * Devolve `null` quando não há confirmação pendente.
+     */
+    suspend fun confirmOrCancel(context: Context, utterance: String): String? {
+        val pending = pendingContact ?: return null
+        android.util.Log.i("JarvisActions", "confirmOrCancel: '$utterance' action=${pending.action}")
+        val text = normalizeWords(utterance)
+        if (text.isEmpty()) return null
+
+        if (Regex("(^| )(nao|cancela|cancelar|esquece|desiste|nada)( |$)").containsMatchIn(text)) {
+            pendingContact = null
+            return "Cancelado."
+        }
+
+        val digit = text.firstOrNull { it.isDigit() }?.digitToInt()
+        val affirmative = text == "sim" || text.startsWith("sim ") ||
+            text.contains("confirm") || text.contains("pode") || text.contains("isso") ||
+            text == "ok" || text.contains("certeza")
+        val choice = when {
+            digit != null -> pending.candidates.getOrNull(digit - 1)
+            pending.candidates.size == 1 && affirmative -> pending.candidates.first()
+            else -> pending.candidates.firstOrNull { contact ->
+                val name = normalizeWords(contact.name)
+                name.isNotEmpty() && (
+                    text.contains(name) ||
+                        name.split(' ').any { it.length >= 4 && text.contains(it) }
+                    )
+            }
+        }
+
+        if (choice == null) {
+            return "Não entendi. Diga sim, o número da opção, ou não para cancelar."
+        }
+        pendingContact = null
+        return when (pending.action) {
+            ContactAction.OPEN_CHAT -> openWhatsapp(context, choice.number, choice.name)
+            ContactAction.CALL_WHATSAPP -> startWhatsappCall(context, choice)
+        }
+    }
+
+    private suspend fun startWhatsappCall(context: Context, contact: ContactMatch): String {
+        val opened = openWhatsapp(context, contact.number, contact.name)
+        if (!opened.startsWith("Abri")) return opened
+        return if (WhatsAppCallBridge.enabled) {
+            WhatsAppCallBridge.requestCall(contact.name)
+            "Abri a conversa com ${contact.name} e vou tentar ligar no viva-voz pelo WhatsApp."
+        } else {
+            "Abri a conversa com ${contact.name}. Para eu ligar sozinho, ative o Acessibilidade " +
+                "do Jarvis em Ajustes; senão toque no ícone de chamada."
+        }
+    }
+
+    private fun normalizeWords(value: String): String =
+        Normalizer.normalize(value, Normalizer.Form.NFD)
+            .replace(Regex("\\p{M}+"), "")
+            .lowercase()
+            .replace(Regex("[^a-z0-9 ]+"), " ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+
+    /** Até 5 contatos, sem repetir números. */
+    private fun resolveContacts(context: Context, query: String): List<ContactMatch> {
+        if (looksLikeNumber(query)) return listOf(ContactMatch(query, query))
+        if (!hasPermission(context, Manifest.permission.READ_CONTACTS)) return emptyList()
+
+        val uri = Uri.withAppendedPath(
+            ContactsContract.CommonDataKinds.Phone.CONTENT_FILTER_URI,
+            Uri.encode(query)
+        )
+        val projection = arrayOf(
+            ContactsContract.CommonDataKinds.Phone.NUMBER,
+            ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME
+        )
+        return runCatching {
+            context.contentResolver.query(uri, projection, null, null, null)?.use { cursor ->
+                val found = mutableListOf<ContactMatch>()
+                while (cursor.moveToNext() && found.size < 5) {
+                    val number = cursor.getString(0) ?: continue
+                    val name = cursor.getString(1) ?: query
+                    val digits = number.filter { it.isDigit() }
+                    if (digits.length >= 8 && found.none { it.number.filter(Char::isDigit) == digits }) {
+                        found.add(ContactMatch(name, number))
+                    }
+                }
+                found
+            }
+        }.getOrNull().orEmpty()
+    }
 
     private fun openWhatsapp(context: Context, number: String, displayName: String): String {
         val digits = normalizeBrazilianNumber(number)

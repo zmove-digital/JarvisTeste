@@ -357,6 +357,12 @@ class JarvisListeningService : Service(), RecognitionListener {
 
         scope.launch {
             val settings = SettingsStore(this@JarvisListeningService)
+            // Uma confirmação pendente é respondida localmente, sem ida ao Gemini.
+            val confirmation = JarvisActions.confirmOrCancel(this@JarvisListeningService, command)
+            if (confirmation != null) {
+                withContext(Dispatchers.Main.immediate) { speakAnswer(confirmation, settings) }
+                return@launch
+            }
             if (!settings.hasApiKey) {
                 speakAnswer(
                     "Ainda não tenho uma chave da API configurada. Abra o aplicativo e informe sua chave.",
@@ -417,7 +423,12 @@ class JarvisListeningService : Service(), RecognitionListener {
         // Continua aceitando fala sem o nome: mais tempo depois de "Pois não?"
         // (esperando o comando) e uma janela curta depois de cada resposta.
         awake = true
-        scheduleEndAwake(if (resetAwake) FOLLOW_UP_WINDOW_MS else PROMPT_WINDOW_MS)
+        val window = when {
+            JarvisActions.hasPendingContact() -> CONFIRM_WINDOW_MS
+            resetAwake -> FOLLOW_UP_WINDOW_MS
+            else -> PROMPT_WINDOW_MS
+        }
+        scheduleEndAwake(window)
         publishStatus(ListeningPhase.AWAKE, "Pode falar...")
         startListening()
     }
@@ -601,6 +612,7 @@ class JarvisListeningService : Service(), RecognitionListener {
         private const val TERMINAL_WINDOW_MS = 450L
 
         // Tempo em que o Jarvis aceita fala sem repetir a palavra de ativação.
+        private const val CONFIRM_WINDOW_MS = 25_000L
         private const val FOLLOW_UP_WINDOW_MS = 8_000L
         private const val PROMPT_WINDOW_MS = 12_000L
 

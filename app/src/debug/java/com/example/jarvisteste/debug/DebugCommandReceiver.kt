@@ -34,6 +34,11 @@ class DebugCommandReceiver : BroadcastReceiver() {
         scope.launch {
             val settings = SettingsStore(appContext)
             Log.i(TAG, "Comando de teste: \"$text\"")
+            val confirmation = JarvisActions.confirmOrCancel(appContext, text)
+            if (confirmation != null) {
+                Log.i(TAG, "Resposta: $confirmation")
+                return@launch
+            }
             val result = GeminiClient(settings.apiKey)
                 .ask(text, JarvisActions.tools(appContext))
             result

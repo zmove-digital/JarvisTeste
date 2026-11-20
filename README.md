@@ -21,9 +21,9 @@ energia** que reage à voz.
 - Conversa por voz: microfone → Gemini → resposta falada, com histórico curto
   em memória para manter o contexto.
 - **Ações no aparelho por *function calling***: além de conversar, o Jarvis
-  executa comandos como abrir aplicativos, abrir playlists no Spotify, abrir
-  conversas do WhatsApp, pesquisar na web, ligar em viva-voz, controlar a mídia
-  e criar alarmes/timers (veja a seção abaixo).
+  executa comandos como abrir aplicativos e playlists no Spotify, abrir conversas
+  ou ligar em viva-voz pelo WhatsApp (com confirmação do contato), pesquisar na
+  web, fazer chamadas telefônicas, controlar a mídia e criar alarmes/timers.
 - Escuta contínua em primeiro plano (notificação fixa), inclusive com a tela
   apagada. Só envia ao Gemini depois da palavra de ativação (padrão: **"Jarvis"**).
 - Palavra de ativação configurável (aceita uma palavra ou expressão curta).
@@ -56,7 +56,9 @@ energia** que reage à voz.
 4. Na tela principal, ligue **Escuta contínua** e permita microfone,
    notificações, telefone e contatos. Em **Ajustes → Ações no aparelho**,
    autorize *Aparecer sobre outros apps* para o Jarvis abrir apps sozinho.
-5. Diga **"Jarvis, que horas são?"** (ou a palavra configurada).
+5. Para ligar pelo WhatsApp, autorize também **Acessibilidade para ligar no
+   WhatsApp** na mesma seção.
+6. Diga **"Jarvis, que horas são?"** (ou a palavra configurada).
 
 ## Vozes: Gemini TTS e voz do aparelho
 
@@ -167,13 +169,14 @@ o app roda a ação **localmente** e devolve o resultado, e só então o Jarvis 
 a confirmação. Assim, "abra o Spotify e toque a Playlist Rock/Pop" vira uma
 chamada real ao sistema, e não um chute.
 
-Ferramentas disponíveis (Nível 1 — comandos de sistema, e Nível 2 — deep links):
+Ferramentas disponíveis (Nível 1 — comandos de sistema, Nível 2 — deep links e
+Nível 3 — Acessibilidade para chamadas no WhatsApp):
 
 | Ferramenta                | Exemplo de fala                                | O que faz |
 | ------------------------- | ---------------------------------------------- | --------- |
 | `abrir_app`               | "abre o Spotify"                               | Abre qualquer app instalado, casando o nome falado (tolerante a erros de transcrição). |
-| `abrir_playlist_spotify`  | "toque a playlist Rock Pop no Spotify"         | Abre a busca/playlist/álbum/faixa no Spotify. Com link ou ID direto, inicia a reprodução. |
-| `abrir_conversa_whatsapp` | "abra a conversa com Tamiris no WhatsApp"      | Abre o chat com um contato ou número. Não envia mensagem nem liga. |
+| `abrir_playlist_spotify`  | "toque a playlist Rock Pop no Spotify"         | Abre a busca na aba Playlists; com link/ID direto, inicia a reprodução. |
+| `abrir_conversa_whatsapp` | "abra a conversa com Tamiris no WhatsApp" / "ligue para Tamiris no zap" | Confirma o contato e abre o chat ou liga em viva-voz (com Acessibilidade). |
 | `pesquisar_web`           | "pesquisa sobre o filme TRON"                  | Abre o navegador com a busca. |
 | `ligar_telefone`          | "liga para o João" / "liga para 11 91234-5678" | Ligação telefônica normal, com viva-voz automático. Aceita contato da agenda ou número. |
 | `controlar_midia`         | "pausa a música", "próxima faixa"              | Play/pause/próxima/anterior/parar no que estiver tocando. |
@@ -186,15 +189,25 @@ acesso a contatos usa o `ContentResolver` da agenda.
 
 ### Deep links (Nível 2)
 
-- **Spotify**: "toque a playlist Rock Pop" abre `spotify:search:Rock%20Pop` e
-  mostra as playlists encontradas. Com um link ou ID direto
-  (`spotify:playlist:<id>`), o Jarvis abre o conteúdo e envia um `KEYCODE_MEDIA_PLAY`
-  para iniciar a reprodução — mas **só se não houver música tocando**, pois no
-  Spotify essa tecla funciona como alternar e pausaria a faixa atual.
-- **WhatsApp**: o número do contato é resolvido na agenda, normalizado para
-  E.164 (ex.: `55 51 9 8142-4944` → `5551981424944`) e aberto por
-  `whatsapp://send?phone=...` no app comum (ou Business, se for o instalado),
-  com `https://wa.me/...` como fallback. Apenas a tela de conversa é aberta.
+- **Spotify**: "toque a playlist Rock Pop" abre
+  `https://open.spotify.com/search/Rock%20Pop/playlists`, que cai direto na aba
+  **Playlists**. Com um link ou ID direto (`spotify:playlist:<id>`), o Jarvis abre
+  o conteúdo e envia um `KEYCODE_MEDIA_PLAY` para iniciar a reprodução — mas
+  **só se não houver música tocando**, pois no Spotify essa tecla alterna e
+  pausaria a faixa atual.
+- **WhatsApp**: o número do contato é resolvido na agenda (até 5 candidatos),
+  normalizado para E.164 (ex.: `55 51 9 8142-4944` → `5551981424944`) e aberto
+  por `whatsapp://send?phone=...` no app comum (ou Business), com
+  `https://wa.me/...` como fallback.
+
+### Confirmação de contato
+
+Toda ação no WhatsApp passa por uma confirmação antes de executar. Se houver um
+único contato, o Jarvis pergunta "Encontrei X. Confirma abrir a conversa com X?
+Diga sim ou não."; se houver vários, lista as opções numeradas. A resposta
+(**sim**, **não**, o número da opção ou o nome) é interpretada **localmente**,
+sem ida ao Gemini, e a janela de escuta é estendida para 25 s. Um pedido de
+"ligar" usa a mesma confirmação, mas com o verbo "ligar para".
 
 ### Permissões e ajustes
 
@@ -210,24 +223,33 @@ acesso a contatos usa o `ContentResolver` da agenda.
   pessoal (sideload), mas **bloqueia a publicação na Play Store**.
 - **Alarme** (`com.android.alarm.permission.SET_ALARM`) e **áudio**
   (`MODIFY_AUDIO_SETTINGS`) completam o conjunto.
+- **Acessibilidade** (`BIND_ACCESSIBILITY_SERVICE`): necessária apenas para
+  ligar pelo WhatsApp. Em **Ajustes → Ações no aparelho** há o cartão
+  **"Acessibilidade para ligar no WhatsApp"** com o botão **Autorizar**, que abre
+  as configurações do Android. Sem ela, o Jarvis abre a conversa e avisa que o
+  usuário precisa tocar no ícone de chamada.
 
 ### Níveis de confiabilidade (o que ainda não é feito)
 
-Estão implementados o **Nível 1** (comandos de sistema padronizados do Android)
-e o **Nível 2** (deep links). Continua de fora:
+Estão implementados os três níveis:
 
-- **Autoplay por nome no Spotify.** Como o Jarvis não tem acesso à API do
-  Spotify, "tocar a playlist Rock/Pop" abre a **busca** por esse nome; o usuário
-  ainda precisa tocar na playlist. Com um link/ID direto, a reprodução começa
-  via comando de mídia.
-- **Ligação pelo WhatsApp.** Não existe API pública para iniciar uma chamada;
-  o Nível 2 abre a conversa, mas não disca. Para ligar, o Jarvis usa a chamada
-  telefônica normal do Nível 1.
-- **Nível 3 — Serviço de Acessibilidade.** É o que permitiria literalmente
-  dirigir a interface (abrir WhatsApp → tocar em "chamar" → ativar viva-voz; ou
-  escolher a playlist na busca e tocar Play). Poderoso, porém frágil: quebra
-  quando o app muda de layout e exige o usuário ativar a acessibilidade. A base
-  de *function calling* já está pronta para receber essas ferramentas depois.
+- **Nível 1** — comandos de sistema padronizados do Android (abrir apps, web,
+  chamada telefônica, mídia, alarme/timer).
+- **Nível 2** — deep links (Spotify, WhatsApp).
+- **Nível 3** — `WhatsAppCallService`, um Serviço de Acessibilidade que toca no
+  botão de **chamada de voz** e depois no **viva-voz** do WhatsApp. Ele só age
+  quando há uma ligação pendente pedida pelo Jarvis, limita-se aos pacotes do
+  WhatsApp e expira após 30 s. **É a parte mais frágil:** depende do texto dos
+  botões e do layout atual do WhatsApp; se o app mudar, o clique pode não
+  acontecer (o Jarvis avisa para ligar manualmente).
+
+Ainda de fora:
+
+- **Autoplay de playlist por nome no Spotify.** Sem a API do Spotify, o comando
+  abre a busca na aba Playlists; o usuário escolhe a playlist. Com link/ID
+  direto, a reprodução começa via comando de mídia.
+- **Escolher automaticamente a primeira playlist da busca** — isso exigiria
+  dirigir a UI do Spotify pela Acessibilidade, com a mesma fragilidade.
 
 ## Privacidade e segurança
 
@@ -264,6 +286,8 @@ app/src/main/java/com/example/jarvisteste/
 │   ├── MicLevel.kt              # nível da sua voz (RMS do reconhecedor)
 │   ├── TtsManager.kt            # TextToSpeech, vozes e conclusão de fala
 │   └── RecognitionBeepSilencer.kt # silencia bipes do reconhecedor
+├── accessibility/
+│   └── WhatsAppCallService.kt   # Nível 3: toca chamada e viva-voz no WhatsApp
 ├── service/
 │   └── JarvisListeningService.kt# escuta contínua + palavra de ativação
 └── ui/
@@ -301,10 +325,12 @@ O arquivo `jarvis_server.py` é o backend antigo (FastAPI + Gemini no PC) e **n�
   `onRmsChanged`, que alguns aparelhos reportam de forma mais grosseira.
 - O despertar da tela com o aparelho bloqueado depende do *full-screen intent*;
   se o fabricante limitar essa permissão, a tela pode não abrir sozinha.
-- As ações vão até o **Nível 2** (deep links). Pelo nome da playlist, o Spotify
-  abre a busca e o usuário precisa tocar na playlist; o autoplay por nome e a
-  ligação pelo WhatsApp exigem um Serviço de Acessibilidade (Nível 3), ainda não
-  implementado.
+- As ações vão até o **Nível 3**. Pelo nome da playlist, o Spotify abre a busca
+  e o usuário precisa tocar na playlist; a ligação pelo WhatsApp depende do
+  Serviço de Acessibilidade e pode falhar se o layout do app mudar.
+- A confirmação de contato usa `READ_CONTACTS`. Se houver muitos contatos com o
+  mesmo nome, o Jarvis mostra até 5 opções; diga o número da opção ou o nome
+  completo.
 - O índice de apps exige `QUERY_ALL_PACKAGES` (impede publicar na Play Store) e o
   casamento por nome pode errar em apps com nomes parecidos; nesse caso, fale o
   nome mais completo.
@@ -314,8 +340,7 @@ O arquivo `jarvis_server.py` é o backend antigo (FastAPI + Gemini no PC) e **n�
 
 ## Próximos passos
 
-- Avaliar um `AccessibilityService` (Nível 3) para autoplay de playlist por nome
-  e ligação pelo WhatsApp, como ferramentas extras.
+- Ampliar a Acessibilidade para escolher a playlist na busca do Spotify.
 - Ampliar os deep links (Nível 2) para YouTube, mapas e outros apps.
 - Ajustar o orbe para variar a cor por humor e testar em telas menores.
 - Ajustar UX de nome personalizado (já configurável em Ajustes).

@@ -59,6 +59,19 @@
             android:exported="false"
             android:foregroundServiceType="microphone" />
 
+        <!-- Nível 3: dirige a UI do WhatsApp para ligar em viva-voz. -->
+        <service
+            android:name=".accessibility.WhatsAppCallService"
+            android:exported="true"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/whatsapp_accessibility" />
+        </service>
+
         <activity
             android:name=".ui.avatar.AvatarActivity"
             android:exported="false"

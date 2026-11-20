@@ -48,10 +48,12 @@ class GeminiClient(private val apiKey: String) {
                 "abrir conversas do WhatsApp, pesquisar na web, ligar, controlar a mídia, " +
                 "criar alarmes e timers): quando o usuário pedir uma dessas ações, chame a " +
                 "ferramenta adequada e depois confirme o resultado em uma frase curta. " +
-                "Para tocar uma playlist no Spotify use abrir_playlist_spotify; para falar " +
-                "com alguém no WhatsApp use abrir_conversa_whatsapp (ela só abre o chat, " +
-                "não envia mensagem nem liga). Se a ferramenta falhar, explique o motivo em " +
-                "poucas palavras. Nunca invente um resultado de ação."
+                "Para tocar uma playlist no Spotify use abrir_playlist_spotify. Para falar " +
+                "com alguém no WhatsApp use abrir_conversa_whatsapp, passando acao \"ligar\" " +
+                "se o usuário pediu chamada ou viva-voz. Essa ferramenta devolve uma pergunta " +
+                "de confirmação: repita ao usuário exatamente o que ela disse e pare; não " +
+                "chame outra ferramenta até o usuário responder. Se a ferramenta falhar, " +
+                "explique o motivo em poucas palavras. Nunca invente um resultado de ação."
     }
 
     suspend fun ask(

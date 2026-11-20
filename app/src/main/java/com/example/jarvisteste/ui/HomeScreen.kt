@@ -100,6 +100,12 @@ fun HomeScreen(
         }
         status = "Consultando o Gemini..."
         scope.launch {
+            val confirmation = JarvisActions.confirmOrCancel(context, message)
+            if (confirmation != null) {
+                status = confirmation
+                voice.speak(confirmation, settings)
+                return@launch
+            }
             val result = GeminiClient(settings.apiKey).ask(message, JarvisActions.tools(context))
             result.onSuccess { reply ->
                 status = reply.text

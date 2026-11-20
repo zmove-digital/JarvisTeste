@@ -77,6 +77,7 @@ fun SettingsScreen(
     val context = LocalContext.current
     val fullScreenAllowed = rememberFullScreenIntentAllowed()
     val overlayAllowed = rememberOverlayAllowed()
+    val accessibilityAllowed = rememberAccessibilityAllowed()
 
     var apiKey by remember { mutableStateOf(settings.apiKey) }
     var showKey by remember { mutableStateOf(false) }
@@ -425,9 +426,10 @@ fun SettingsScreen(
             JarvisLabel("Ações no aparelho")
             Spacer(modifier = Modifier.height(10.dp))
             Text(
-                text = "O Jarvis pode abrir aplicativos, pesquisar na web, ligar em viva-voz, " +
-                    "controlar a música e criar alarmes e timers. Telefone e contatos são " +
-                    "pedidos ao ligar a Escuta contínua.",
+                text = "O Jarvis pode abrir aplicativos e playlists no Spotify, abrir conversas " +
+                    "e ligar no WhatsApp, pesquisar na web, fazer chamadas telefônicas em " +
+                    "viva-voz, controlar a música e criar alarmes e timers. Telefone e " +
+                    "contatos são pedidos ao ligar a Escuta contínua.",
                 color = JarvisColors.TextMuted,
                 fontSize = 12.sp
             )
@@ -472,6 +474,49 @@ fun SettingsScreen(
                                             Uri.parse("package:${context.packageName}")
                                         )
                                     )
+                                }
+                            }
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            if (accessibilityAllowed) {
+                Text(
+                    text = "Acessibilidade para ligar no WhatsApp: ativa.",
+                    color = JarvisColors.Success,
+                    fontSize = 12.sp
+                )
+            } else {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(6.dp),
+                    color = JarvisColors.SurfaceAlt,
+                    border = BorderStroke(1.dp, JarvisColors.BorderSelected)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            text = "Acessibilidade para ligar no WhatsApp",
+                            color = JarvisColors.AccentSoft,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "O WhatsApp não tem API para iniciar chamadas. Com a " +
+                                "Acessibilidade ativa, o Jarvis toca no botão de chamada e " +
+                                "no viva-voz por você. Pode falhar se o app mudar de layout.",
+                            color = JarvisColors.TextMuted,
+                            fontSize = 11.sp
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        JarvisGhostButton(
+                            text = "Autorizar",
+                            onClick = {
+                                runCatching {
+                                    context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                                 }
                             }
                         )
@@ -539,6 +584,41 @@ private fun rememberOverlayAllowed(): Boolean {
             if (event == Lifecycle.Event.ON_RESUME) {
                 allowed = Settings.canDrawOverlays(context)
             }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    return allowed
+}
+
+@Composable
+private fun rememberAccessibilityAllowed(): Boolean {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    fun check(): Boolean = runCatching {
+        val enabled = Settings.Secure.getInt(
+            context.contentResolver,
+            Settings.Secure.ACCESSIBILITY_ENABLED,
+            0
+        ) == 1
+        val services = Settings.Secure.getString(
+            context.contentResolver,
+            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        ).orEmpty()
+        val pkg = context.packageName
+        enabled && (
+            services.contains("$pkg/.accessibility.WhatsAppCallService") ||
+                services.contains("$pkg/$pkg.accessibility.WhatsAppCallService")
+            )
+    }.getOrDefault(false)
+
+    var allowed by remember { mutableStateOf(check()) }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) allowed = check()
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
