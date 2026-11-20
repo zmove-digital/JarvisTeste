@@ -2,6 +2,7 @@ package com.example.jarvisteste.ui.components
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -21,12 +22,15 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.jarvisteste.R
 
 /**
  * Paleta "quase TRON": fundo quase preto, linhas e brilhos em ciano neon e
@@ -64,11 +68,29 @@ fun JarvisBackground(content: @Composable BoxScope.() -> Unit) {
             JarvisColors.BackgroundBottom
         )
     )
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(gradient)
-    ) {
+    Box(modifier = Modifier.fillMaxSize().background(gradient)) {
+        // Arte HUD fornecida para o projeto: preenche a tela sem distorcer.
+        Image(
+            painter = painterResource(R.drawable.jarvis_hud),
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop,
+            alpha = 0.72f
+        )
+        // Véu escuro mantém o contraste dos textos sobre a arte.
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            JarvisColors.BackgroundTop.copy(alpha = 0.45f),
+                            JarvisColors.BackgroundMid.copy(alpha = 0.55f),
+                            Color.Black.copy(alpha = 0.72f)
+                        )
+                    )
+                )
+        )
         Canvas(modifier = Modifier.fillMaxSize()) { drawTronGrid() }
         content()
     }
@@ -77,7 +99,7 @@ fun JarvisBackground(content: @Composable BoxScope.() -> Unit) {
 /** Grade neon + brilho no topo: a marca registrada do visual TRON. */
 private fun DrawScope.drawTronGrid() {
     val step = 46.dp.toPx()
-    val line = JarvisColors.Grid.copy(alpha = 0.42f)
+    val line = JarvisColors.Grid.copy(alpha = 0.16f)
 
     var x = 0f
     while (x <= size.width) {
@@ -93,8 +115,8 @@ private fun DrawScope.drawTronGrid() {
     drawRect(
         Brush.radialGradient(
             colors = listOf(
-                JarvisColors.Glow.copy(alpha = 0.22f),
-                JarvisColors.Glow.copy(alpha = 0.05f),
+                JarvisColors.Glow.copy(alpha = 0.10f),
+                JarvisColors.Glow.copy(alpha = 0.03f),
                 Color.Transparent
             ),
             center = Offset(size.width / 2f, size.height * 0.16f),

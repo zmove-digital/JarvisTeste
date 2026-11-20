@@ -4,9 +4,10 @@ Assistente de voz em português brasileiro, feito em Kotlin + Jetpack Compose.
 O app é **autônomo**: fala direto com o Gemini usando a chave da API do próprio
 usuário, sem servidor intermediário.
 
-A interface toda tem um visual **"quase TRON"**: fundo quase preto, grade neon,
-linhas e brilhos em ciano e rótulos em caixa alta. O avatar é um **orbe de
-energia** que reage à voz.
+A interface toda tem um visual **"quase TRON"**: fundo HUD escuro com grade
+neon, linhas e brilhos em ciano e rótulos em caixa alta. O avatar é um **orbe de
+energia** que reage à voz. O ícone do app e a arte de fundo vêm dos arquivos em
+`icons/` e `images/` e foram adaptados para os recursos do Android.
 
 ## O que já funciona
 
