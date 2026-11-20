@@ -126,12 +126,14 @@ Ajustes. A opção só tem efeito enquanto a escuta contínua está ligada.
 
 ## O orbe e o despertar da tela
 
-Ao abrir o app, uma **`SplashActivity`** mostra o ícone com dois anéis girando
-em sentidos opostos, marcas de instrumento e uma barra de inicialização — o
-visual de um painel holográfico sendo montado. O tema de lançamento usa fundo
-escuro e um *animated vector drawable* ciano, então não há flash branco nem
-mesmo no splash do sistema (Android 12+). Depois de ~2,3 s ela abre a tela
-normal.
+Ao abrir o app, uma **`SplashActivity`** monta um painel de laboratório ao redor
+do ícone: reator pulsando, varredura de radar, anéis contrarrotativos com régua
+de marcas, partículas em órbitas diferentes, mira de quatro cantos, linha de
+varredura, telemetria (`REATOR // 98,4%`, `LAB.01 // ONLINE`) e barra de
+inicialização — o visual de um holograma sendo calibrado no laboratório do
+Tony Stark. O tema de lançamento usa fundo escuro e um *animated vector
+drawable* ciano, então não há flash branco nem mesmo no splash do sistema
+(Android 12+). Depois de ~2,8 s ela abre a tela normal.
 
 O avatar do Jarvis é um único **orbe de energia** desenhado inteiramente em
 Compose (`Canvas`), sem imagens externas. Ele reage em tempo real às ondas de
@@ -300,7 +302,7 @@ Ainda de fora:
 
 ```
 app/src/main/java/com/example/jarvisteste/
-├── SplashActivity.kt            # abertura: ícone e anéis girando
+├── SplashActivity.kt            # abertura: painel de laboratório holográfico
 ├── MainActivity.kt              # navegação onboarding → home → ajustes
 ├── data/
 │   ├── SecureStore.kt           # AES/GCM + Android Keystore
