@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Anéis giratórios: um grupo animado pelo AVD. -->
+    <group android:name="rotor" android:pivotX="54" android:pivotY="54">
+        <path
+            android:pathData="M54,8 A46,46 0 0 1 100,54 M54,100 A46,46 0 0 1 8,54"
+            android:strokeColor="#00E0F8"
+            android:strokeWidth="2.5"
+            android:strokeLineCap="round" />
+        <path
+            android:pathData="M54,2 L54,10 M106,54 L98,54 M54,106 L54,98 M2,54 L10,54"
+            android:strokeColor="#B8F6FF"
+            android:strokeWidth="2"
+            android:strokeLineCap="round" />
+    </group>
+
+    <!-- Núcleo fixo: o emblema do Jarvis. -->
+    <path
+        android:pathData="M54,28 A26,26 0 1 1 54,80 A26,26 0 1 1 54,28"
+        android:strokeColor="#2BE7FF"
+        android:strokeWidth="2" />
+    <path
+        android:pathData="M54,42 L66,49 L66,63 L54,70 L42,63 L42,49 Z"
+        android:strokeColor="#B8F6FF"
+        android:strokeWidth="2"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M47,52 L54,48 L61,52 M47,60 L54,64 L61,60"
+        android:strokeColor="#00E0F8"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round" />
+</vector>

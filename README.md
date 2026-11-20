@@ -126,6 +126,13 @@ Ajustes. A opção só tem efeito enquanto a escuta contínua está ligada.
 
 ## O orbe e o despertar da tela
 
+Ao abrir o app, uma **`SplashActivity`** mostra o ícone com dois anéis girando
+em sentidos opostos, marcas de instrumento e uma barra de inicialização — o
+visual de um painel holográfico sendo montado. O tema de lançamento usa fundo
+escuro e um *animated vector drawable* ciano, então não há flash branco nem
+mesmo no splash do sistema (Android 12+). Depois de ~2,3 s ela abre a tela
+normal.
+
 O avatar do Jarvis é um único **orbe de energia** desenhado inteiramente em
 Compose (`Canvas`), sem imagens externas. Ele reage em tempo real às ondas de
 voz:
@@ -293,6 +300,7 @@ Ainda de fora:
 
 ```
 app/src/main/java/com/example/jarvisteste/
+├── SplashActivity.kt            # abertura: ícone e anéis girando
 ├── MainActivity.kt              # navegação onboarding → home → ajustes
 ├── data/
 │   ├── SecureStore.kt           # AES/GCM + Android Keystore
@@ -316,6 +324,7 @@ app/src/main/java/com/example/jarvisteste/
 ├── service/
 │   └── JarvisListeningService.kt# escuta contínua + palavra de ativação
 └── ui/
+    ├── SplashScreen.kt          # abertura holográfica em Compose
     ├── OnboardingScreen.kt
     ├── HomeScreen.kt
     ├── SettingsScreen.kt
