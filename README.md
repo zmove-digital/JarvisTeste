@@ -4,10 +4,12 @@ Assistente de voz em português brasileiro, feito em Kotlin + Jetpack Compose.
 O app é **autônomo**: fala direto com o Gemini usando a chave da API do próprio
 usuário, sem servidor intermediário.
 
-A interface toda tem um visual **"quase TRON"**: fundo HUD escuro com grade
-neon, linhas e brilhos em ciano e rótulos em caixa alta. O avatar é um **orbe de
-energia** que reage à voz. O ícone do app e a arte de fundo vêm dos arquivos em
-`icons/` e `images/` e foram adaptados para os recursos do Android.
+A interface toda tem um visual **"quase TRON"**: fundo escuro, linhas de
+instrumento em ciano, rótulos em caixa alta e um **orbe de energia** que reage à
+voz. A arte em `images/hud.png` serviu de referência para a estética — moldura
+com cantos recortados, trilhos com marcas, barras de leitura, painéis em fita e
+um retículo circular ao redor do orbe —, mas tudo é **desenhado em Compose**,
+sem esticar a imagem atrás dos textos. O ícone vem de `icons/`.
 
 ## O que já funciona
 
@@ -302,7 +304,7 @@ app/src/main/java/com/example/jarvisteste/
     │   ├── AvatarScreen.kt      # tela cheia + medidor de nível
     │   ├── AvatarActivity.kt    # atividade sobre a tela de bloqueio
     │   └── AvatarPresenter.kt   # notificação full-screen + wakelock
-    └── components/              # cores, grade TRON, cards e seletor de voz
+    └── components/              # cores, moldura HUD, retículo, painéis e botões
 ```
 
 O arquivo `jarvis_server.py` é o backend antigo (FastAPI + Gemini no PC) e **não

@@ -59,6 +59,7 @@ import com.example.jarvisteste.ui.avatar.AvatarActivity
 import com.example.jarvisteste.ui.avatar.AvatarMood
 import com.example.jarvisteste.ui.avatar.AvatarPresenter
 import com.example.jarvisteste.ui.avatar.JarvisOrb
+import com.example.jarvisteste.ui.components.HudPanel
 import com.example.jarvisteste.ui.components.JarvisBackground
 import com.example.jarvisteste.ui.components.JarvisColors
 import com.example.jarvisteste.ui.components.JarvisGhostButton
@@ -443,12 +444,7 @@ fun SettingsScreen(
                 )
             } else {
                 Spacer(modifier = Modifier.height(12.dp))
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(6.dp),
-                    color = JarvisColors.SurfaceAlt,
-                    border = BorderStroke(1.dp, JarvisColors.BorderSelected)
-                ) {
+                HudPanel(label = "Permissão de inicialização", modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
                             text = "Permita abrir apps sobre outros apps",
@@ -490,12 +486,7 @@ fun SettingsScreen(
                     fontSize = 12.sp
                 )
             } else {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(6.dp),
-                    color = JarvisColors.SurfaceAlt,
-                    border = BorderStroke(1.dp, JarvisColors.BorderSelected)
-                ) {
+                HudPanel(label = "Acessibilidade", modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
                             text = "Acessibilidade para ligar no WhatsApp",

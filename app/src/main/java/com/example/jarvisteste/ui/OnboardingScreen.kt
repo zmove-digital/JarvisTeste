@@ -50,6 +50,7 @@ import com.example.jarvisteste.data.VoiceEngine
 import com.example.jarvisteste.data.VoiceProfiles
 import com.example.jarvisteste.ui.avatar.AvatarMood
 import com.example.jarvisteste.ui.avatar.JarvisOrb
+import com.example.jarvisteste.ui.components.HudDataStrip
 import com.example.jarvisteste.ui.components.JarvisBackground
 import com.example.jarvisteste.ui.components.JarvisColors
 import com.example.jarvisteste.ui.components.JarvisGhostButton
@@ -160,7 +161,16 @@ fun OnboardingScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(36.dp))
+            Spacer(modifier = Modifier.height(16.dp))
+
+            HudDataStrip(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(9.dp),
+                filled = step + 2
+            )
+
+            Spacer(modifier = Modifier.height(28.dp))
 
             when (step) {
                 0 -> WelcomeStep(onStart = { step = 1 })

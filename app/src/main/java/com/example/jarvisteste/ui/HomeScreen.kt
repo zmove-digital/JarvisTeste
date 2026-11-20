@@ -25,7 +25,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Surface
@@ -61,6 +61,9 @@ import com.example.jarvisteste.ui.avatar.AvatarActivity
 import com.example.jarvisteste.ui.avatar.AvatarMood
 import com.example.jarvisteste.ui.avatar.JarvisOrb
 import com.example.jarvisteste.ui.avatar.toAvatarMood
+import com.example.jarvisteste.ui.components.HudDataStrip
+import com.example.jarvisteste.ui.components.HudPanel
+import com.example.jarvisteste.ui.components.HudReticle
 import com.example.jarvisteste.ui.components.JarvisBackground
 import com.example.jarvisteste.ui.components.JarvisColors
 import kotlinx.coroutines.launch
@@ -342,7 +345,7 @@ fun HomeScreen(
                     )
 
                     Surface(
-                        shape = RoundedCornerShape(50),
+                        shape = CutCornerShape(6.dp),
                         color = when {
                             listeningActive -> JarvisColors.SuccessSurface
                             !settings.hasApiKey -> JarvisColors.DangerSurface
@@ -368,12 +371,21 @@ fun HomeScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(52.dp))
+            Spacer(modifier = Modifier.height(18.dp))
+
+            HudDataStrip(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(9.dp),
+                filled = if (listeningActive) 7 else 4
+            )
+
+            Spacer(modifier = Modifier.height(34.dp))
 
             // ------------------------------------------------- identidade visual
             Box(
                 modifier = Modifier
-                    .size(240.dp)
+                    .size(260.dp)
                     .clickable {
                         context.startActivity(
                             Intent(context, AvatarActivity::class.java)
@@ -382,9 +394,10 @@ fun HomeScreen(
                     },
                 contentAlignment = Alignment.Center
             ) {
+                HudReticle(modifier = Modifier.fillMaxSize())
                 JarvisOrb(
                     mood = avatarMood,
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier.fillMaxSize(0.82f)
                 )
             }
 
@@ -412,7 +425,7 @@ fun HomeScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable(onClick = onOpenSettings),
-                    shape = RoundedCornerShape(6.dp),
+                    shape = CutCornerShape(8.dp),
                     color = JarvisColors.DangerSurface
                 ) {
                     Text(
@@ -426,23 +439,8 @@ fun HomeScreen(
             }
 
             // ------------------------------------------------ área de conversa
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(18.dp),
-                color = JarvisColors.Surface,
-                border = androidx.compose.foundation.BorderStroke(1.dp, JarvisColors.Border)
-            ) {
+            HudPanel(label = "Assistente", modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(20.dp)) {
-                    Text(
-                        text = "ASSISTENTE",
-                        color = JarvisColors.Accent,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 2.sp
-                    )
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
                     Text(
                         text = effectiveStatus,
                         color = Color.White,
@@ -470,12 +468,7 @@ fun HomeScreen(
             Spacer(modifier = Modifier.height(18.dp))
 
             // ------------------------------------------------ escuta contínua
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(18.dp),
-                color = JarvisColors.Surface,
-                border = androidx.compose.foundation.BorderStroke(1.dp, JarvisColors.Border)
-            ) {
+            HudPanel(label = "Escuta contínua", modifier = Modifier.fillMaxWidth()) {
                 Row(
                     modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
                     verticalAlignment = Alignment.CenterVertically
