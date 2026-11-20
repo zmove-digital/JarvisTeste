@@ -36,6 +36,7 @@ object JarvisActions {
         openSpotify(context),
         openWhatsappChat(context),
         webSearch(context),
+        weather(context),
         phoneCall(context),
         mediaControl(context),
         setAlarm(context),
@@ -325,9 +326,10 @@ object JarvisActions {
 
     private fun webSearch(context: Context): ToolSpec = ToolSpec(
         name = "pesquisar_web",
-        description = "Abre o navegador com uma busca na internet. Use quando o usuário pedir " +
-            "para pesquisar, procurar, ou ver algo na web. Não use para perguntas que você " +
-            "mesmo sabe responder.",
+        description = "Abre o navegador com uma busca. Use SOMENTE quando o usuário pedir " +
+            "explicitamente para abrir o navegador, abrir um site ou pesquisar na internet. " +
+            "NUNCA use esta ferramenta para responder perguntas: responda você mesmo, " +
+            "usando consultar_clima para clima.",
         parameters = schema(
             "consulta" to text("O que pesquisar na internet."),
             required = listOf("consulta")
@@ -337,6 +339,29 @@ object JarvisActions {
             val url = "https://www.google.com/search?q=" +
                 URLEncoder.encode(consulta, Charsets.UTF_8.name())
             openInBrowser(context, url, "a busca por \"$consulta\"")
+        }
+    )
+
+    // ------------------------------------------------------------------ clima
+
+    private fun weather(context: Context): ToolSpec = ToolSpec(
+        name = "consultar_clima",
+        description = "Consulta a temperatura, as condições atuais e a previsão do tempo em " +
+            "uma cidade. Use SEMPRE que o usuário perguntar sobre clima, tempo, temperatura, " +
+            "chuva, calor, frio ou previsão. Nunca use pesquisar_web para clima.",
+        parameters = schema(
+            "cidade" to text(
+                "Cidade informada pelo usuário. Deixe vazio para usar a localização do aparelho."
+            ),
+            "dias" to integer("Quantos dias de previsão (1 a 5). Padrão: 2."),
+            required = listOf("cidade")
+        ),
+        run = { args ->
+            WeatherService.forecast(
+                context,
+                args.optString("cidade").ifBlank { null },
+                if (args.has("dias")) args.optInt("dias", 2) else 2
+            )
         }
     )
 

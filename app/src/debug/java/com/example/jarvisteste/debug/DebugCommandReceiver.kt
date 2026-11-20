@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 import com.example.jarvisteste.actions.JarvisActions
+import com.example.jarvisteste.actions.WeatherService
 import com.example.jarvisteste.data.GeminiClient
 import com.example.jarvisteste.data.SettingsStore
 import kotlinx.coroutines.CoroutineScope
@@ -26,11 +27,21 @@ import kotlinx.coroutines.launch
 class DebugCommandReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
+        val appContext = context.applicationContext
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+        // Teste isolado do clima, sem consumir cota do Gemini.
+        if (intent.action == ACTION_WEATHER) {
+            val cidade = intent.getStringExtra("cidade")
+            scope.launch {
+                Log.i(TAG, "Clima ($cidade): ${WeatherService.forecast(appContext, cidade)}")
+            }
+            return
+        }
+
         val text = intent.getStringExtra("text")?.trim().orEmpty()
         if (text.isEmpty()) return
 
-        val appContext = context.applicationContext
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         scope.launch {
             val settings = SettingsStore(appContext)
             Log.i(TAG, "Comando de teste: \"$text\"")
@@ -49,5 +60,6 @@ class DebugCommandReceiver : BroadcastReceiver() {
 
     companion object {
         private const val TAG = "DebugCommand"
+        private const val ACTION_WEATHER = "com.example.jarvisteste.DEBUG_WEATHER"
     }
 }

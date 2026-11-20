@@ -43,18 +43,30 @@ class GeminiClient(private val apiKey: String) {
                 "prestativo e levemente bem-humorado. Fale sempre em português brasileiro. " +
                 "Como suas respostas serão faladas em voz alta, seja conciso: no máximo " +
                 "3 frases curtas, sem listas, sem markdown e sem emojis, a menos que o " +
-                "usuário peça detalhes. Você pode executar ações no aparelho pelas " +
-                "ferramentas disponíveis (abrir aplicativos, abrir playlists no Spotify, " +
-                "abrir conversas do WhatsApp, pesquisar na web, ligar, controlar a mídia, " +
-                "criar alarmes e timers): quando o usuário pedir uma dessas ações, chame a " +
-                "ferramenta adequada e depois confirme o resultado em uma frase curta. " +
-                "Para tocar uma playlist no Spotify use abrir_playlist_spotify. Para falar " +
-                "com alguém no WhatsApp use abrir_conversa_whatsapp, passando acao \"ligar\" " +
-                "se o usuário pediu chamada ou viva-voz. Essa ferramenta devolve uma pergunta " +
-                "de confirmação: repita ao usuário exatamente o que ela disse e pare; não " +
-                "chame outra ferramenta até o usuário responder. Se a ferramenta falhar, " +
-                "explique o motivo em poucas palavras. Nunca invente um resultado de ação."
+                "usuário peça detalhes.\n" +
+                "REGRA PRINCIPAL: pergunta é para ser RESPONDIDA com texto. Fatos, " +
+                "conhecimento geral, temas, notícias, dúvidas e informações devem virar " +
+                "resposta falada. NUNCA chame uma ferramenta apenas porque a pergunta é sobre " +
+                "algo atual. Você tem acesso a uma busca na internet para obter informações " +
+                "recentes: use-a para fundamentar a resposta, sem pedir ao usuário que abra " +
+                "um navegador.\n" +
+                "Use consultar_clima para QUALQUER pergunta sobre clima, tempo, temperatura, " +
+                "chuva ou previsão, e responda com os dados obtidos.\n" +
+                "Use pesquisar_web SOMENTE se o usuário pedir explicitamente para abrir o " +
+                "navegador, abrir um site ou pesquisar na internet. Nunca para responder uma " +
+                "pergunta.\n" +
+                "Ações no aparelho: use abrir_playlist_spotify para tocar playlists; " +
+                "abrir_conversa_whatsapp para conversar ou ligar no zap (com acao \"ligar\" " +
+                "quando pedirem chamada ou viva-voz); ligar_telefone para chamada telefônica " +
+                "normal; controlar_midia para play/pause; definir_alarme e definir_timer. " +
+                "abrir_conversa_whatsapp devolve uma pergunta de confirmação: repita ao " +
+                "usuário exatamente o que ela disse e pare; não chame outra ferramenta até " +
+                "ele responder. Se uma ferramenta falhar, explique em poucas palavras. " +
+                "Nunca invente um resultado de ação."
     }
+
+    @Volatile
+    private var googleSearchAvailable = true
 
     suspend fun ask(
         message: String,
@@ -70,18 +82,23 @@ class GeminiClient(private val apiKey: String) {
         var lastFailure: Throwable? = null
 
         for (model in MODELS) {
-            var attempt = runConversation(model, message, history, tools)
-            if (attempt.isSuccess) return@withContext attempt
+            // Tenta com busca do Google + ações, depois só ações, depois só texto.
+            val variants = mutableListOf<Pair<List<ToolSpec>, Boolean>>()
+            if (googleSearchAvailable) variants.add(tools to true)
+            variants.add(tools to false)
 
-            var error = attempt.exceptionOrNull()
-            // Se o modelo recusar as ferramentas, tenta de novo sem elas para não
-            // deixar o usuário sem resposta nenhuma.
-            if (tools.isNotEmpty() && error is GeminiException && error.httpCode == 400 &&
-                TOOL_ERROR.containsMatchIn(error.raw)
-            ) {
-                attempt = runConversation(model, message, history, emptyList())
+            var error: Throwable? = null
+            for ((activeTools, grounding) in variants) {
+                val attempt = runConversation(model, message, history, activeTools, grounding)
                 if (attempt.isSuccess) return@withContext attempt
                 error = attempt.exceptionOrNull()
+                val toolRejected = error is GeminiException && error.httpCode == 400 &&
+                    TOOL_ERROR.containsMatchIn(error.raw)
+                if (toolRejected && grounding) {
+                    googleSearchAvailable = false
+                    continue
+                }
+                if (!toolRejected) break
             }
 
             lastFailure = error
@@ -119,13 +136,19 @@ class GeminiClient(private val apiKey: String) {
         model: String,
         message: String,
         history: List<Pair<String, String>>,
-        tools: List<ToolSpec>
+        tools: List<ToolSpec>,
+        grounding: Boolean = false
     ): Result<GeminiReply> {
         val contents = buildContents(history, message)
+        val pediuNavegador = Regex(
+            "navegador|browser|site|url|na internet",
+            RegexOption.IGNORE_CASE
+        ).containsMatchIn(message)
         var round = 0
 
         while (true) {
-            val response = post(model, contents, tools, 800).getOrElse { return Result.failure(it) }
+            val response = post(model, contents, tools, 800, grounding)
+                .getOrElse { return Result.failure(it) }
 
             val call = firstFunctionCall(response)
             if (call != null && tools.isNotEmpty() && round < MAX_TOOL_ROUNDS) {
@@ -133,7 +156,11 @@ class GeminiClient(private val apiKey: String) {
                 val name = call.optString("name")
                 val args = call.optJSONObject("args") ?: JSONObject()
                 val spec = tools.firstOrNull { it.name == name }
-                val observation = if (spec == null) {
+                val observation = if (name == "pesquisar_web" && !pediuNavegador) {
+                    // Trava determinística: pergunta comum não pode virar aba de browser.
+                    "O usuário NÃO pediu para abrir o navegador. Não abra o browser. " +
+                        "Responda à pergunta em texto usando a busca interna do Gemini."
+                } else if (spec == null) {
                     "Ferramenta desconhecida: $name"
                 } else {
                     runCatching { spec.run(args) }
@@ -160,7 +187,8 @@ class GeminiClient(private val apiKey: String) {
         model: String,
         contents: JSONArray,
         tools: List<ToolSpec>,
-        maxOutputTokens: Int
+        maxOutputTokens: Int,
+        grounding: Boolean = false
     ): Result<JSONObject> {
         var connection: HttpURLConnection? = null
         return try {
@@ -174,7 +202,7 @@ class GeminiClient(private val apiKey: String) {
                 setRequestProperty("x-goog-api-key", apiKey)
             }
 
-            val payload = buildRequestBody(contents, tools, maxOutputTokens)
+            val payload = buildRequestBody(contents, tools, maxOutputTokens, grounding)
             connection.outputStream.use { output ->
                 output.write(payload.toByteArray(Charsets.UTF_8))
             }
@@ -234,7 +262,8 @@ class GeminiClient(private val apiKey: String) {
     private fun buildRequestBody(
         contents: JSONArray,
         tools: List<ToolSpec>,
-        maxOutputTokens: Int
+        maxOutputTokens: Int,
+        grounding: Boolean
     ): String {
         val body = JSONObject()
             .put(
@@ -250,11 +279,16 @@ class GeminiClient(private val apiKey: String) {
                     .put("maxOutputTokens", maxOutputTokens)
             )
 
+        val toolsArray = JSONArray()
+        if (grounding) {
+            toolsArray.put(JSONObject().put("google_search", JSONObject()))
+        }
         if (tools.isNotEmpty()) {
             val declarations = JSONArray()
             tools.forEach { declarations.put(it.declaration()) }
-            body.put("tools", JSONArray().put(JSONObject().put("functionDeclarations", declarations)))
+            toolsArray.put(JSONObject().put("functionDeclarations", declarations))
         }
+        if (toolsArray.length() > 0) body.put("tools", toolsArray)
         return body.toString()
     }
 
@@ -354,6 +388,8 @@ fun sanitizeForSpeech(text: String): String = text
     .replace(Regex("```[\\s\\S]*?```"), " ")
     .replace(Regex("`([^`]*)`"), "$1")
     .replace(Regex("\\[([^\\]]+)]\\([^)]*\\)"), "$1")
+    .replace(Regex("【[^】]*】"), " ")
+    .replace(Regex("\\[\\d+(?:,\\s*\\d+)*]"), " ")
     .replace(Regex("[*_#>~|]"), " ")
     .replace(Regex("\\s+"), " ")
     .trim()

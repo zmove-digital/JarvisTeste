@@ -13,6 +13,8 @@
     <!-- Ações no aparelho: ligar, controlar áudio, criar alarme e abrir apps. -->
     <uses-permission android:name="android.permission.CALL_PHONE" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <!-- Permite usar a localização aproximada para responder sobre o clima. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
     <!-- Permite abrir outros apps a partir do serviço em segundo plano. -->

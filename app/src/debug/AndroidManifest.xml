@@ -28,6 +28,7 @@
             android:exported="true">
             <intent-filter>
                 <action android:name="com.example.jarvisteste.DEBUG_COMMAND" />
+                <action android:name="com.example.jarvisteste.DEBUG_WEATHER" />
             </intent-filter>
         </receiver>
     </application>

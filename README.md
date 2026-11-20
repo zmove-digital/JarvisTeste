@@ -180,11 +180,30 @@ Nível 3 — Acessibilidade para chamadas no WhatsApp):
 | `abrir_app`               | "abre o Spotify"                               | Abre qualquer app instalado, casando o nome falado (tolerante a erros de transcrição). |
 | `abrir_playlist_spotify`  | "toque a playlist Rock Pop no Spotify"         | Abre a busca na aba Playlists; com link/ID direto, inicia a reprodução. |
 | `abrir_conversa_whatsapp` | "abra a conversa com Tamiris no WhatsApp" / "ligue para Tamiris no zap" | Confirma o contato e abre o chat ou liga em viva-voz (com Acessibilidade). |
-| `pesquisar_web`           | "pesquisa sobre o filme TRON"                  | Abre o navegador com a busca. |
+| `consultar_clima`         | "como está o tempo em Porto Alegre?"           | Busca clima e previsão reais e devolve o dado para o Jarvis falar. |
+| `pesquisar_web`           | "pesquise isso no navegador"                   | Abre o navegador somente mediante pedido explícito. |
 | `ligar_telefone`          | "liga para o João" / "liga para 11 91234-5678" | Ligação telefônica normal, com viva-voz automático. Aceita contato da agenda ou número. |
 | `controlar_midia`         | "pausa a música", "próxima faixa"              | Play/pause/próxima/anterior/parar no que estiver tocando. |
 | `definir_alarme`          | "me acorda às 7h30"                            | Cria um alarme no relógio do aparelho. |
 | `definir_timer`           | "timer de 5 minutos"                           | Cria um timer (contagem regressiva). |
+
+### Perguntas são respondidas, não delegadas ao navegador
+
+O prompt do sistema deixa isso explícito: **pergunta é para ser respondida com
+texto**. Fatos, temas, dúvidas e notícias viram resposta falada. Além do
+conhecimento do próprio Gemini, as requisições usam *grounding* com a busca do
+Google (quando o modelo/key permitem), para informações recentes — sem abrir
+navegador e sem pedir ao usuário que leia uma página.
+
+`pesquisar_web` foi restrito a pedidos literais como "abra o navegador", "abra
+um site" ou "pesquise na internet". Há ainda uma trava no cliente: se o modelo
+chamar `pesquisar_web` sem o usuário ter citado navegador/browser/site/url/"na
+internet", a chamada é recusada internamente e ele é obrigado a responder em
+texto. Para clima, a ferramenta `consultar_clima`
+consulta a API gratuita **Open-Meteo** (sem chave) e devolve um resumo com
+temperatura, condição, umidade, vento e previsão dos próximos dias. Se a cidade
+não for informada, o app usa a última localização conhecida; se não houver
+permissão de localização ou cidade inválida, o Jarvis pergunta qual cidade.
 
 A ligação usa `Intent.ACTION_CALL` e ativa o viva-voz pelo `AudioManager`
 (`setCommunicationDevice` no Android 12+, `isSpeakerphoneOn` abaixo disso). O
@@ -217,6 +236,8 @@ sem ida ao Gemini, e a janela de escuta é estendida para 25 s. Um pedido de
 - **Telefone e contatos** (`CALL_PHONE`, `READ_CONTACTS`) são pedidos ao ligar a
   **Escuta contínua**. Sem `READ_CONTACTS` o Jarvis só liga para números ditos
   em voz alta; sem `CALL_PHONE` ele avisa que falta permissão.
+- **Localização aproximada** (`ACCESS_COARSE_LOCATION`) é opcional e permite
+  responder "como está o tempo?" sem dizer a cidade. Sem ela, o Jarvis pergunta.
 - **Aparecer sobre outros apps** (`SYSTEM_ALERT_WINDOW`): permite que o serviço
   em segundo plano abra atividades (app, navegador, discador). Em **Ajustes →
   Ações no aparelho** há o botão **Autorizar**; sem isso, o Jarvis só abre apps
@@ -281,7 +302,8 @@ app/src/main/java/com/example/jarvisteste/
 ├── actions/
 │   ├── JarvisActions.kt         # as ações no aparelho expostas como ferramentas
 │   ├── ToolSpec.kt              # declaração e esquema JSON das ferramentas
-│   └── AppIndex.kt              # índice dos apps instalados + casamento por nome
+│   ├── AppIndex.kt              # índice dos apps instalados + casamento por nome
+│   └── WeatherService.kt        # clima e previsão via Open-Meteo (sem chave)
 ├── audio/
 │   ├── VoiceManager.kt          # fala única: Gemini com fallback para o aparelho
 │   ├── GeminiTtsPlayer.kt       # Gemini TTS em streaming, AudioTrack e cache
