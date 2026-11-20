@@ -44,11 +44,14 @@ class GeminiClient(private val apiKey: String) {
                 "Como suas respostas serão faladas em voz alta, seja conciso: no máximo " +
                 "3 frases curtas, sem listas, sem markdown e sem emojis, a menos que o " +
                 "usuário peça detalhes. Você pode executar ações no aparelho pelas " +
-                "ferramentas disponíveis (abrir aplicativos, pesquisar na web, ligar, " +
-                "controlar a mídia, criar alarmes e timers): quando o usuário pedir uma " +
-                "dessas ações, chame a ferramenta adequada e depois confirme o resultado " +
-                "em uma frase curta. Se a ferramenta falhar, explique o motivo em poucas " +
-                "palavras. Nunca invente um resultado de ação."
+                "ferramentas disponíveis (abrir aplicativos, abrir playlists no Spotify, " +
+                "abrir conversas do WhatsApp, pesquisar na web, ligar, controlar a mídia, " +
+                "criar alarmes e timers): quando o usuário pedir uma dessas ações, chame a " +
+                "ferramenta adequada e depois confirme o resultado em uma frase curta. " +
+                "Para tocar uma playlist no Spotify use abrir_playlist_spotify; para falar " +
+                "com alguém no WhatsApp use abrir_conversa_whatsapp (ela só abre o chat, " +
+                "não envia mensagem nem liga). Se a ferramenta falhar, explique o motivo em " +
+                "poucas palavras. Nunca invente um resultado de ação."
     }
 
     suspend fun ask(

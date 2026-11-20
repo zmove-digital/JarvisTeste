@@ -15,6 +15,10 @@ import androidx.core.content.ContextCompat
 import kotlinx.coroutines.delay
 import java.net.URLEncoder
 
+private const val SPOTIFY_PACKAGE = "com.spotify.music"
+private const val WHATSAPP_PACKAGE = "com.whatsapp"
+private const val WHATSAPP_BUSINESS_PACKAGE = "com.whatsapp.w4b"
+
 /**
  * Ações que o Jarvis executa no aparelho, expostas ao Gemini como ferramentas:
  * abrir aplicativos, pesquisar na web, ligar em viva-voz, controlar a mídia e
@@ -27,6 +31,8 @@ object JarvisActions {
 
     fun tools(context: Context): List<ToolSpec> = listOf(
         openApp(context),
+        openSpotify(context),
+        openWhatsappChat(context),
         webSearch(context),
         phoneCall(context),
         mediaControl(context),
@@ -66,6 +72,118 @@ object JarvisActions {
             }
         }
     )
+
+    // -------------------------------------------------- deep link do Spotify
+
+    private fun openSpotify(context: Context): ToolSpec = ToolSpec(
+        name = "abrir_playlist_spotify",
+        description = "Abre uma playlist, álbum, artista ou faixa no Spotify, ou faz uma busca " +
+            "no Spotify quando o usuário só falou o nome. Use quando pedirem para tocar, " +
+            "ouvir ou colocar uma playlist/música no Spotify. Aceita o nome ou um link/ID do " +
+            "Spotify. Com link/ID direto, a reprodução é iniciada; com apenas um nome, abre " +
+            "a busca para o usuário escolher. Não use para pausar ou passar faixa " +
+            "(use controlar_midia) nem para abrir o app sem conteúdo específico " +
+            "(use abrir_app).",
+        parameters = schema(
+            "consulta" to text(
+                "Nome da playlist, álbum, artista ou faixa; ou link do Spotify " +
+                    "(open.spotify.com/... ou spotify:...)."
+            ),
+            required = listOf("consulta")
+        ),
+        run = { args ->
+            val consulta = args.optString("consulta").trim()
+            when {
+                consulta.isEmpty() -> "Não entendi o que abrir no Spotify."
+                !isInstalled(context, SPOTIFY_PACKAGE) ->
+                    "O Spotify não está instalado neste aparelho."
+
+                else -> {
+                    val target = spotifyTarget(consulta)
+                    val uri = target?.uri ?: "spotify:search:" + URLEncoder.encode(
+                        consulta.replace('/', ' '), Charsets.UTF_8.name()
+                    ).replace("+", "%20")
+                    val fallback = target?.webUrl ?: "https://open.spotify.com/search/" +
+                        URLEncoder.encode(consulta, Charsets.UTF_8.name())
+                    val opened = launch(context, uri, SPOTIFY_PACKAGE) ||
+                        launch(context, fallback, SPOTIFY_PACKAGE) ||
+                        launch(context, fallback)
+
+                    when {
+                        !opened -> "Encontrei o Spotify, mas não consegui abrir o conteúdo."
+                        target != null -> {
+                            // Com a sessão parada, a deep link abre a playlist pausada e
+                            // o comando de mídia (Nível 1) inicia a reprodução. Se já
+                            // houver música tocando, enviar PLAY a pausaria no Spotify.
+                            delay(1_800)
+                            val audio = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+                            val alreadyPlaying = audio?.isMusicActive == true
+                            if (!alreadyPlaying) sendMediaKey(context, KeyEvent.KEYCODE_MEDIA_PLAY)
+                            if (alreadyPlaying) {
+                                "Abri o conteúdo no Spotify, que já estava tocando."
+                            } else {
+                                "Abri o conteúdo no Spotify e iniciei a reprodução."
+                            }
+                        }
+                        else -> "Abri a busca por \"$consulta\" no Spotify. " +
+                            "Toque na playlist que quiser ouvir."
+                    }
+                }
+            }
+        }
+    )
+
+    // ---------------------------------------------- deep link do WhatsApp
+
+    private fun openWhatsappChat(context: Context): ToolSpec = ToolSpec(
+        name = "abrir_conversa_whatsapp",
+        description = "Abre a conversa do WhatsApp com um contato da agenda ou com um número " +
+            "informado. Apenas abre o chat: não envia mensagem e não faz ligação. Use quando " +
+            "o usuário pedir para conversar, mandar mensagem ou falar com alguém no " +
+            "WhatsApp ou Zap. Para ligação telefônica normal, use ligar_telefone.",
+        parameters = schema(
+            "contato" to text("Nome do contato ou número de telefone, como o usuário falou."),
+            required = listOf("contato")
+        ),
+        run = { args ->
+            val contato = args.optString("contato").trim()
+            val resolved = resolveNumber(context, contato)
+            when {
+                resolved != null -> openWhatsapp(context, resolved.first, resolved.second)
+                !hasPermission(context, Manifest.permission.READ_CONTACTS) ->
+                    "Não tenho acesso à sua agenda. Permita contatos ou fale o número com DDD."
+                else -> "Não encontrei nenhum contato chamado \"$contato\" na agenda."
+            }
+        }
+    )
+
+    private fun openWhatsapp(context: Context, number: String, displayName: String): String {
+        val digits = normalizeBrazilianNumber(number)
+        if (digits.length < 10) {
+            return "O número de \"$displayName\" parece inválido para o WhatsApp."
+        }
+
+        val preferred = when {
+            isInstalled(context, WHATSAPP_PACKAGE) -> WHATSAPP_PACKAGE
+            isInstalled(context, WHATSAPP_BUSINESS_PACKAGE) -> WHATSAPP_BUSINESS_PACKAGE
+            else -> null
+        }
+        val appUri = "whatsapp://send?phone=$digits"
+        val webUri = "https://wa.me/$digits"
+
+        val opened = if (preferred != null) {
+            launch(context, appUri, preferred) || launch(context, webUri, preferred)
+        } else {
+            false
+        }
+        val fallback = if (opened) true else launch(context, webUri)
+
+        return if (fallback) {
+            "Abri a conversa com $displayName no WhatsApp."
+        } else {
+            "O WhatsApp não está instalado ou não consegui abrir a conversa."
+        }
+    }
 
     // ---------------------------------------------------------- pesquisar web
 
@@ -201,8 +319,7 @@ object JarvisActions {
             if (audio == null) {
                 "Não consegui acessar o áudio do aparelho."
             } else {
-                audio.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
-                audio.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, keyCode))
+                sendMediaKey(context, keyCode)
                 when (acao) {
                     "play" -> "Reproduzindo."
                     "pause" -> "Pausei a reprodução."
@@ -279,6 +396,63 @@ object JarvisActions {
     )
 
     // ------------------------------------------------------------- utilidades
+
+    private data class SpotifyTarget(val uri: String, val webUrl: String)
+
+    /** Reconhece links/IDs do Spotify; um nome comum não é confundido com ID. */
+    private fun spotifyTarget(value: String): SpotifyTarget? {
+        val link = Regex(
+            """(?:https?://)?(?:open\.)?spotify\.com/(playlist|album|artist|track)/([\w]+)""",
+            RegexOption.IGNORE_CASE
+        ).find(value)
+            ?: Regex("""spotify:(playlist|album|artist|track):([\w]+)""", RegexOption.IGNORE_CASE)
+                .find(value)
+        if (link != null) {
+            val type = link.groupValues[1].lowercase()
+            val id = link.groupValues[2]
+            return SpotifyTarget("spotify:$type:$id", "https://open.spotify.com/$type/$id")
+        }
+        val bare = value.filter { !it.isWhitespace() }
+        if (bare.length == 22 && bare.all { it.isLetterOrDigit() }) {
+            return SpotifyTarget("spotify:playlist:$bare", "https://open.spotify.com/playlist/$bare")
+        }
+        return null
+    }
+
+    /** Abre um URI, opcionalmente em um app específico. */
+    private fun launch(context: Context, uri: String, packageName: String? = null): Boolean = try {
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(uri))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (packageName != null) intent.setPackage(packageName)
+        context.startActivity(intent)
+        true
+    } catch (error: Exception) {
+        false
+    }
+
+    @Suppress("DEPRECATION")
+    private fun isInstalled(context: Context, packageName: String): Boolean = try {
+        context.packageManager.getPackageInfo(packageName, 0) != null
+    } catch (error: Exception) {
+        false
+    }
+
+    /** Converte números brasileiros em E.164 (55 + DDD + número). */
+    private fun normalizeBrazilianNumber(value: String): String {
+        var digits = value.filter { it.isDigit() }
+        if (digits.startsWith("55") && digits.length >= 12) return digits
+        if (digits.startsWith("0")) digits = digits.drop(1)
+        return if (digits.length == 10 || digits.length == 11) "55$digits" else digits
+    }
+
+    /** Envia uma tecla de mídia à sessão ativa (música, vídeo, etc.). */
+    private fun sendMediaKey(context: Context, keyCode: Int) {
+        val audio = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+        runCatching {
+            audio.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
+            audio.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, keyCode))
+        }
+    }
 
     private fun openInBrowser(context: Context, url: String, label: String): String = try {
         context.startActivity(
