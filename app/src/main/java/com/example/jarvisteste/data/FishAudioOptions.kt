@@ -59,9 +59,13 @@ object FishAudioModels {
 
 private val FISH_VOICE_ID = Regex("([0-9a-fA-F]{32})")
 
-/** Chaves do Gemini começam com "AIza". */
-fun looksLikeGeminiKey(input: String?): Boolean =
-    input?.trim()?.startsWith("AIza", ignoreCase = true) == true
+/** Chaves do Gemini usam o formato novo "AQ." ou o antigo "AIza". */
+fun looksLikeGeminiKey(input: String?): Boolean {
+    val text = input?.trim().orEmpty()
+    return text.startsWith("AIza", ignoreCase = true) ||
+        text.startsWith("AQ.", ignoreCase = true) ||
+        text.startsWith("AQ_", ignoreCase = true)
+}
 
 /** Chaves do Fish Audio começam com "sk-fish-". */
 fun looksLikeFishKey(input: String?): Boolean =

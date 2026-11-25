@@ -430,8 +430,8 @@ private fun FishAudioFields(
 
     if (looksLikeGeminiKey(config.apiKey)) {
         Text(
-            text = "Essa parece ser uma chave do Gemini (AIza...). A chave do Fish " +
-                "Audio começa com sk-fish- e é criada em fish.audio/app/api-keys.",
+            text = "Essa parece ser uma chave do Gemini (AQ... ou AIza...). A chave do " +
+                "Fish Audio começa com sk-fish- e é criada em fish.audio/app/api-keys.",
             color = JarvisColors.Danger,
             fontSize = 11.sp
         )

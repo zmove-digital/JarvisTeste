@@ -114,7 +114,7 @@ fun SettingsScreen(
     fun save(showConfirmation: Boolean = true) {
         if (looksLikeFishKey(apiKey)) {
             feedback = "Essa é uma chave do Fish Audio, não do Gemini. " +
-                "Cole a chave do Gemini (começa com AIza) aqui e use a do Fish Audio " +
+                "Cole a chave do Gemini (AQ... ou AIza...) aqui e use a do Fish Audio " +
                 "em Motor de voz → Voz personalizada."
             feedbackIsError = true
             return
@@ -155,7 +155,7 @@ fun SettingsScreen(
         }
         if (looksLikeFishKey(trimmed)) {
             feedback = "Essa é uma chave do Fish Audio. Ela vai em " +
-                "Motor de voz → Voz personalizada; aqui é a chave do Gemini (AIza...)."
+                "Motor de voz → Voz personalizada; aqui é a chave do Gemini (AQ... ou AIza...)."
             feedbackIsError = true
             return
         }
@@ -203,9 +203,9 @@ fun SettingsScreen(
             JarvisLabel("Conta")
             Spacer(modifier = Modifier.height(10.dp))
             Text(
-                text = "Sua chave do Google AI Studio (começa com AIza). Ela fica cifrada " +
-                    "neste aparelho. A chave do Fish Audio vai em Motor de voz → Voz " +
-                    "personalizada.",
+                text = "Sua chave do Google AI Studio (formato novo AQ... ou antigo AIza...). " +
+                    "Ela fica cifrada neste aparelho. A chave do Fish Audio vai em Motor de " +
+                    "voz → Voz personalizada.",
                 color = JarvisColors.TextMuted,
                 fontSize = 12.sp
             )
@@ -381,8 +381,8 @@ fun SettingsScreen(
                         engine != VoiceEngine.FISH_AUDIO -> null
                         fishConfig.apiKey.isBlank() -> "Informe a API key do Fish Audio."
                         looksLikeGeminiKey(fishConfig.apiKey) ->
-                            "Essa é uma chave do Gemini. Cole aqui a chave do Fish Audio " +
-                                "(começa com sk-fish-)."
+                            "Essa é uma chave do Gemini (AQ... ou AIza...). Cole aqui a " +
+                                "chave do Fish Audio (começa com sk-fish-)."
                         fishConfig.resolvedVoiceId.isBlank() ->
                             "Cole o link ou o ID da voz do Fish Audio."
                         else -> null
