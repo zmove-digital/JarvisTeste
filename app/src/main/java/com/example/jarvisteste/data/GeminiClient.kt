@@ -1,5 +1,6 @@
 package com.example.jarvisteste.data
 
+import android.util.Log
 import com.example.jarvisteste.actions.ToolSpec
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -16,28 +17,72 @@ class GeminiException(
     val httpCode: Int?,
     message: String,
     val tryNextModel: Boolean = false,
-    val raw: String = ""
+    val raw: String = "",
+    val retryAfterSeconds: Int? = null
 ) : Exception(message)
 
 /**
- * Cliente mínimo e direto da API do Gemini (sem backend).
- * A chave vem do próprio usuário e é enviada apenas para o Google.
+ * Cliente da API do Gemini (sem backend).
+ *
+ * Usa a **Interactions API** (`/v1beta/interactions`): é a interface recomendada
+ * pelo Google e a que aceita as chaves novas no formato `AQ.` — o antigo
+ * `generateContent` responde 429 para essas chaves. A chave é do próprio
+ * usuário e vai apenas para o Google.
  *
  * Além de conversar, o cliente sabe executar *function calling*: o modelo pode
  * pedir uma das [ToolSpec] passadas em [ask]; o app roda a ação no aparelho e
  * devolve o resultado, e só então o modelo fala a resposta final.
+ *
+ * A conversa é mantida no próprio aparelho (`store = false` no servidor), então
+ * o histórico curto de [ConversationMemory] é reenviado a cada pergunta.
  */
 class GeminiClient(private val apiKey: String) {
 
     companion object {
-        private const val BASE_URL =
+        private const val TAG = "GeminiClient"
+        private const val MODELS_URL =
             "https://generativelanguage.googleapis.com/v1beta/models"
+        private const val INTERACTIONS_URL =
+            "https://generativelanguage.googleapis.com/v1beta/interactions"
         private const val MAX_TOOL_ROUNDS = 4
         private val MODELS = listOf(
+            // O alias acompanha o modelo lite atual e é o mais econômico.
+            "gemini-flash-lite-latest",
             "gemini-3.5-flash-lite",
-            "gemini-2.5-flash-lite"
+            "gemini-3.5-flash",
+            "gemini-3.6-flash"
         )
-        private val TOOL_ERROR = Regex("tool|function|declaration|schema", RegexOption.IGNORE_CASE)
+        private val TOOL_ERROR = Regex(
+            "tool|function|declaration|schema|parameters",
+            RegexOption.IGNORE_CASE
+        )
+        private val SEARCH_ERROR = Regex(
+            "google.?search|grounding|search",
+            RegexOption.IGNORE_CASE
+        )
+
+        /**
+         * Quando o Google responde 429, o limite costuma ser de curto prazo
+         * (por minuto). Guardamos um instante de bloqueio para não disparar
+         * várias requisições inúteis na sequência.
+         */
+        @Volatile
+        private var quotaBlockedUntil = 0L
+        @Volatile
+        private var consecutiveQuotaHits = 0
+        private const val DEFAULT_QUOTA_WAIT_SECONDS = 30
+
+        private fun quotaMessage(seconds: Int? = null): String {
+            val wait = seconds ?: DEFAULT_QUOTA_WAIT_SECONDS
+            return "Limite de uso do Gemini atingido. Tente de novo em $wait segundos. " +
+                "Se continuar, a cota gratuita do dia acabou."
+        }
+
+        /** Depois de duas negativas seguidas, a cota diária acabou mesmo. */
+        private fun dailyQuotaMessage(): String =
+            "A cota gratuita do Gemini acabou por hoje. Ela reinicia em algumas horas. " +
+                "Ative o faturamento no Google AI Studio para usar sem parar."
+
         private const val SYSTEM_INSTRUCTION =
             "Você é Jarvis, um assistente pessoal inteligente, educado, natural, " +
                 "prestativo e levemente bem-humorado. Fale sempre em português brasileiro. " +
@@ -81,28 +126,63 @@ class GeminiClient(private val apiKey: String) {
         val history = ConversationMemory.snapshot()
         var lastFailure: Throwable? = null
 
+        if (System.currentTimeMillis() < quotaBlockedUntil) {
+            val remaining = ((quotaBlockedUntil - System.currentTimeMillis()) / 1000L)
+                .toInt()
+                .coerceAtLeast(1)
+            val message = if (consecutiveQuotaHits >= 2) {
+                dailyQuotaMessage()
+            } else {
+                quotaMessage(remaining)
+            }
+            return@withContext Result.failure(
+                GeminiException(429, message, retryAfterSeconds = remaining)
+            )
+        }
+
         for (model in MODELS) {
             // Tenta com busca do Google + ações, depois só ações, depois só texto.
+            // Assim uma declaração de ferramenta rejeitada nunca deixa o usuário sem
+            // resposta.
             val variants = mutableListOf<Pair<List<ToolSpec>, Boolean>>()
-            if (googleSearchAvailable) variants.add(tools to true)
-            variants.add(tools to false)
+            if (tools.isNotEmpty()) {
+                if (googleSearchAvailable) variants.add(tools to true)
+                variants.add(tools to false)
+            }
+            variants.add(emptyList<ToolSpec>() to false)
 
             var error: Throwable? = null
             for ((activeTools, grounding) in variants) {
                 val attempt = runConversation(model, message, history, activeTools, grounding)
-                if (attempt.isSuccess) return@withContext attempt
+                if (attempt.isSuccess) {
+                    consecutiveQuotaHits = 0
+                    return@withContext attempt
+                }
+
                 error = attempt.exceptionOrNull()
-                val toolRejected = error is GeminiException && error.httpCode == 400 &&
-                    TOOL_ERROR.containsMatchIn(error.raw)
-                if (toolRejected && grounding) {
-                    googleSearchAvailable = false
+                val failure = error as? GeminiException
+                val toolRejected = failure?.httpCode == 400 &&
+                    TOOL_ERROR.containsMatchIn(failure.raw)
+                if (toolRejected) {
+                    if (grounding && SEARCH_ERROR.containsMatchIn(failure?.raw.orEmpty())) {
+                        googleSearchAvailable = false
+                    }
                     continue
                 }
-                if (!toolRejected) break
+                break
             }
 
             lastFailure = error
-            if ((error as? GeminiException)?.tryNextModel != true) break
+            val failure = error as? GeminiException
+            if (failure?.httpCode == 429) {
+                // Não adianta tentar os outros modelos: a cota é do projeto.
+                consecutiveQuotaHits++
+                val wait = (failure.retryAfterSeconds ?: DEFAULT_QUOTA_WAIT_SECONDS)
+                    .coerceIn(5, 600)
+                quotaBlockedUntil = System.currentTimeMillis() + wait * 1000L
+                break
+            }
+            if (failure?.tryNextModel != true) break
         }
 
         Result.failure(lastFailure ?: GeminiException(null, "Falha ao consultar o Gemini."))
@@ -114,10 +194,12 @@ class GeminiClient(private val apiKey: String) {
             return@withContext Result.failure(GeminiException(null, "Informe a chave da API."))
         }
 
-        val contents = buildContents(emptyList(), "Responda apenas com a palavra OK.")
+        val input = JSONArray().put(
+            userInput("Responda apenas com a palavra OK.")
+        )
         var lastFailure: Throwable? = null
         for (model in MODELS) {
-            val attempt = post(model, contents, emptyList(), 16)
+            val attempt = postInteraction(model, input, emptyList(), 64, grounding = false)
             if (attempt.isSuccess) return@withContext Result.success(model)
 
             val error = attempt.exceptionOrNull() ?: continue
@@ -127,6 +209,66 @@ class GeminiClient(private val apiKey: String) {
 
         Result.failure(lastFailure ?: GeminiException(null, "Chave inválida."))
     }
+
+    /**
+     * Lista os modelos que esta chave pode usar para conversar. Serve de
+     * diagnóstico quando o Google aposenta um modelo ou muda a cota.
+     */
+    suspend fun listModels(): Result<List<String>> = withContext(Dispatchers.IO) {
+        var connection: HttpURLConnection? = null
+        try {
+            connection = (URL("$MODELS_URL?pageSize=200")
+                .openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = 20_000
+                readTimeout = 30_000
+                setRequestProperty("x-goog-api-key", apiKey)
+            }
+            val code = connection.responseCode
+            val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+            val body = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
+            Log.d(TAG, "GET models -> HTTP $code")
+
+            if (code !in 200..299) {
+                val errorMessage = runCatching {
+                    JSONObject(body).getJSONObject("error").getString("message")
+                }.getOrDefault("HTTP $code")
+                return@withContext Result.failure(
+                    GeminiException(code, friendlyMessage(code, errorMessage), raw = errorMessage)
+                )
+            }
+
+            val models = JSONObject(body).optJSONArray("models") ?: JSONArray()
+            val names = mutableListOf<String>()
+            for (index in 0 until models.length()) {
+                val item = models.optJSONObject(index) ?: continue
+                val name = item.optString("name").removePrefix("models/")
+                val methods = item.optJSONArray("supportedGenerationMethods")
+                val methodList = buildList {
+                    if (methods != null) {
+                        for (i in 0 until methods.length()) add(methods.optString(i))
+                    }
+                }
+                val canChat = methodList.isEmpty() || methodList.contains("generateContent")
+                if (canChat) names.add(name)
+                Log.d(TAG, "Modelo $name -> $methodList")
+            }
+            Result.success(names)
+        } catch (error: Exception) {
+            Result.failure(GeminiException(null, "Falha ao listar modelos: ${error.message}"))
+        } finally {
+            connection?.disconnect()
+        }
+    }
+
+    /** Teste rápido da Interactions API com o modelo informado. */
+    suspend fun probeInteractions(model: String): Result<String> = withContext(Dispatchers.IO) {
+        val input = JSONArray().put(userInput("Oi"))
+        postInteraction(model, input, emptyList(), 64, grounding = false).map { model }
+    }
+
+    /** Teste rápido de um modelo: uma resposta curta, só para ver se há cota. */
+    suspend fun probe(model: String): Result<String> = probeInteractions(model)
 
     /**
      * Conversa com o modelo em uma ou mais rodadas, executando ferramentas até
@@ -139,7 +281,13 @@ class GeminiClient(private val apiKey: String) {
         tools: List<ToolSpec>,
         grounding: Boolean = false
     ): Result<GeminiReply> {
-        val contents = buildContents(history, message)
+        val input = JSONArray()
+        history.forEach { (user, assistant) ->
+            input.put(userInput(user))
+            input.put(modelOutput(assistant))
+        }
+        input.put(userInput(message))
+
         val pediuNavegador = Regex(
             "navegador|browser|site|url|na internet",
             RegexOption.IGNORE_CASE
@@ -147,28 +295,39 @@ class GeminiClient(private val apiKey: String) {
         var round = 0
 
         while (true) {
-            val response = post(model, contents, tools, 800, grounding)
+            val response = postInteraction(model, input, tools, 800, grounding)
                 .getOrElse { return Result.failure(it) }
 
-            val call = firstFunctionCall(response)
-            if (call != null && tools.isNotEmpty() && round < MAX_TOOL_ROUNDS) {
+            val calls = functionCalls(response)
+            if (calls.isNotEmpty() && tools.isNotEmpty() && round < MAX_TOOL_ROUNDS) {
                 round++
-                val name = call.optString("name")
-                val args = call.optJSONObject("args") ?: JSONObject()
-                val spec = tools.firstOrNull { it.name == name }
-                val observation = if (name == "pesquisar_web" && !pediuNavegador) {
-                    // Trava determinística: pergunta comum não pode virar aba de browser.
-                    "O usuário NÃO pediu para abrir o navegador. Não abra o browser. " +
-                        "Responda à pergunta em texto usando a busca interna do Gemini."
-                } else if (spec == null) {
-                    "Ferramenta desconhecida: $name"
-                } else {
-                    runCatching { spec.run(args) }
-                        .getOrElse { "Não consegui concluir a ação (${it.message ?: "erro"})." }
-                }
+                // A interação é sem estado no servidor: devolvemos os passos do
+                // modelo exatamente como vieram antes dos resultados.
+                appendSteps(input, steps(response))
 
-                modelContent(response)?.let { contents.put(it) }
-                contents.put(functionResponse(name, observation))
+                calls.forEach { call ->
+                    val name = call.optString("name")
+                    val args = call.optJSONObject("arguments") ?: JSONObject()
+                    val spec = tools.firstOrNull { it.name == name }
+                    val observation = if (name == "pesquisar_web" && !pediuNavegador) {
+                        // Trava determinística: pergunta comum não pode virar aba de browser.
+                        "O usuário NÃO pediu para abrir o navegador. Não abra o browser. " +
+                            "Responda à pergunta em texto usando a busca interna do Gemini."
+                    } else if (spec == null) {
+                        "Ferramenta desconhecida: $name"
+                    } else {
+                        runCatching { spec.run(args) }
+                            .getOrElse { "Não consegui concluir a ação (${it.message ?: "erro"})." }
+                    }
+
+                    input.put(
+                        functionResult(
+                            name = name,
+                            callId = call.optString("id"),
+                            observation = observation
+                        )
+                    )
+                }
                 continue
             }
 
@@ -183,16 +342,16 @@ class GeminiClient(private val apiKey: String) {
         }
     }
 
-    private fun post(
+    private fun postInteraction(
         model: String,
-        contents: JSONArray,
+        input: JSONArray,
         tools: List<ToolSpec>,
         maxOutputTokens: Int,
-        grounding: Boolean = false
+        grounding: Boolean
     ): Result<JSONObject> {
         var connection: HttpURLConnection? = null
         return try {
-            connection = (URL("$BASE_URL/$model:generateContent")
+            connection = (URL(INTERACTIONS_URL)
                 .openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
                 connectTimeout = 20_000
@@ -202,7 +361,7 @@ class GeminiClient(private val apiKey: String) {
                 setRequestProperty("x-goog-api-key", apiKey)
             }
 
-            val payload = buildRequestBody(contents, tools, maxOutputTokens, grounding)
+            val payload = buildRequestBody(model, input, tools, maxOutputTokens, grounding)
             connection.outputStream.use { output ->
                 output.write(payload.toByteArray(Charsets.UTF_8))
             }
@@ -210,151 +369,214 @@ class GeminiClient(private val apiKey: String) {
             val code = connection.responseCode
             val stream = if (code in 200..299) connection.inputStream else connection.errorStream
             val body = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
+            Log.d(TAG, "POST interactions/$model -> HTTP $code (${body.length} bytes)")
 
             if (code in 200..299) {
-                Result.success(JSONObject(body))
+                val json = JSONObject(body)
+                val status = json.optString("status")
+                if (status == "failed") {
+                    val message = json.optJSONArray("errors")
+                        ?.optJSONObject(0)
+                        ?.optString("message")
+                        .orEmpty()
+                        .ifBlank { "interação falhou" }
+                    Log.w(TAG, "Interação $model falhou: $message")
+                    Result.failure(
+                        GeminiException(
+                            null,
+                            "Não consegui falar com o Gemini: $message",
+                            raw = message
+                        )
+                    )
+                } else {
+                    Result.success(json)
+                }
             } else {
                 val errorMessage = runCatching {
                     JSONObject(body).getJSONObject("error").getString("message")
                 }.getOrDefault("HTTP $code")
+                val retryAfter = connection?.getHeaderField("Retry-After")
+                    ?.trim()
+                    ?.toIntOrNull()
+                Log.w(TAG, "Gemini $model falhou: $errorMessage")
+                Log.w(TAG, "Corpo do erro: ${body.take(900)}")
+                logQuotaHeaders(connection, code)
                 Result.failure(
                     GeminiException(
                         httpCode = code,
-                        message = friendlyMessage(code, errorMessage),
+                        message = friendlyMessage(code, errorMessage, retryAfter),
                         tryNextModel = shouldTryNext(code, errorMessage),
-                        raw = errorMessage
+                        raw = errorMessage,
+                        retryAfterSeconds = retryAfter
                     )
                 )
             }
         } catch (timeout: SocketTimeoutException) {
-            Result.failure(GeminiException(null, "O Gemini demorou demais para responder. Tente novamente."))
+            Result.failure(
+                GeminiException(null, "O Gemini demorou demais para responder. Tente novamente.")
+            )
         } catch (dns: UnknownHostException) {
             Result.failure(GeminiException(null, "Sem conexão com a internet."))
         } catch (error: Exception) {
-            Result.failure(GeminiException(null, "Falha de rede: ${error.message ?: "erro desconhecido"}"))
+            Result.failure(
+                GeminiException(null, "Falha de rede: ${error.message ?: "erro desconhecido"}")
+            )
         } finally {
             connection?.disconnect()
         }
     }
 
-    private fun buildContents(history: List<Pair<String, String>>, message: String): JSONArray {
-        val contents = JSONArray()
-        history.forEach { (user, model) ->
-            contents.put(
-                JSONObject()
-                    .put("role", "user")
-                    .put("parts", JSONArray().put(JSONObject().put("text", user)))
-            )
-            contents.put(
-                JSONObject()
-                    .put("role", "model")
-                    .put("parts", JSONArray().put(JSONObject().put("text", model)))
-            )
-        }
-        contents.put(
-            JSONObject()
-                .put("role", "user")
-                .put("parts", JSONArray().put(JSONObject().put("text", message)))
-        )
-        return contents
+    private fun logQuotaHeaders(connection: HttpURLConnection?, code: Int) {
+        if (connection == null) return
+        val interesting = connection.headerFields
+            .filterKeys { key ->
+                key != null && (
+                    key.contains("ratelimit", ignoreCase = true) ||
+                        key.contains("retry", ignoreCase = true) ||
+                        key.contains("quota", ignoreCase = true)
+                    )
+            }
+        Log.d(TAG, "HTTP $code headers: $interesting")
     }
 
     private fun buildRequestBody(
-        contents: JSONArray,
+        model: String,
+        input: JSONArray,
         tools: List<ToolSpec>,
         maxOutputTokens: Int,
         grounding: Boolean
     ): String {
         val body = JSONObject()
+            .put("model", model)
+            .put("input", input)
+            .put("system_instruction", SYSTEM_INSTRUCTION)
+            // A conversa vive só no aparelho; o Google não guarda o histórico.
+            .put("store", false)
             .put(
-                "system_instruction",
-                JSONObject().put("parts", JSONArray().put(JSONObject().put("text", SYSTEM_INSTRUCTION)))
-            )
-            .put("contents", contents)
-            .put(
-                "generationConfig",
-                JSONObject()
-                    .put("temperature", 0.8)
-                    .put("topP", 0.95)
-                    .put("maxOutputTokens", maxOutputTokens)
+                "generation_config",
+                JSONObject().put("max_output_tokens", maxOutputTokens)
             )
 
         val toolsArray = JSONArray()
-        if (grounding) {
-            toolsArray.put(JSONObject().put("google_search", JSONObject()))
-        }
-        if (tools.isNotEmpty()) {
-            val declarations = JSONArray()
-            tools.forEach { declarations.put(it.declaration()) }
-            toolsArray.put(JSONObject().put("functionDeclarations", declarations))
-        }
+        if (grounding) toolsArray.put(JSONObject().put("type", "google_search"))
+        tools.forEach { toolsArray.put(toolDeclaration(it)) }
         if (toolsArray.length() > 0) body.put("tools", toolsArray)
         return body.toString()
     }
 
-    private fun modelContent(response: JSONObject): JSONObject? =
-        response.optJSONArray("candidates")
-            ?.optJSONObject(0)
-            ?.optJSONObject("content")
+    private fun toolDeclaration(spec: ToolSpec): JSONObject = JSONObject()
+        .put("type", "function")
+        .put("name", spec.name)
+        .put("description", spec.description)
+        .put("parameters", lowercaseTypes(spec.parameters))
 
-    private fun firstFunctionCall(response: JSONObject): JSONObject? {
-        val parts = modelContent(response)?.optJSONArray("parts") ?: return null
-        for (index in 0 until parts.length()) {
-            val call = parts.optJSONObject(index)?.optJSONObject("functionCall")
-            if (call != null) return call
+    /**
+     * O schema das ferramentas usa os tipos em maiúsculas (`OBJECT`, `STRING`),
+     * herdados do `generateContent`. A Interactions API espera JSON Schema em
+     * minúsculas, então normalizamos antes de enviar.
+     */
+    private fun lowercaseTypes(value: Any?): Any? = when (value) {
+        is JSONObject -> JSONObject().also { out ->
+            val keys = value.keys()
+            while (keys.hasNext()) {
+                val key = keys.next()
+                val item = value.opt(key)
+                out.put(key, if (key == "type" && item is String) item.lowercase() else lowercaseTypes(item))
+            }
         }
-        return null
+        is JSONArray -> JSONArray().also { out ->
+            for (index in 0 until value.length()) out.put(lowercaseTypes(value.opt(index)))
+        }
+        else -> value
     }
 
-    private fun functionResponse(name: String, observation: String): JSONObject = JSONObject()
-        .put("role", "user")
+    private fun userInput(text: String): JSONObject = JSONObject()
+        .put("type", "user_input")
         .put(
-            "parts",
-            JSONArray().put(
-                JSONObject().put(
-                    "functionResponse",
-                    JSONObject()
-                        .put("name", name)
-                        .put("response", JSONObject().put("resultado", observation))
-                )
-            )
+            "content",
+            JSONArray().put(JSONObject().put("type", "text").put("text", text))
         )
 
+    private fun modelOutput(text: String): JSONObject = JSONObject()
+        .put("type", "model_output")
+        .put(
+            "content",
+            JSONArray().put(JSONObject().put("type", "text").put("text", text))
+        )
+
+    private fun functionResult(name: String, callId: String, observation: String): JSONObject =
+        JSONObject()
+            .put("type", "function_result")
+            .put("name", name)
+            .put("call_id", callId)
+            .put(
+                "result",
+                JSONArray().put(JSONObject().put("type", "text").put("text", observation))
+            )
+
+    private fun steps(response: JSONObject): JSONArray =
+        response.optJSONArray("steps") ?: JSONArray()
+
+    private fun appendSteps(target: JSONArray, source: JSONArray) {
+        for (index in 0 until source.length()) {
+            val step = source.optJSONObject(index) ?: continue
+            target.put(step)
+        }
+    }
+
+    private fun functionCalls(response: JSONObject): List<JSONObject> {
+        val calls = mutableListOf<JSONObject>()
+        val steps = steps(response)
+        for (index in 0 until steps.length()) {
+            val step = steps.optJSONObject(index) ?: continue
+            if (step.optString("type") == "function_call") calls.add(step)
+        }
+        return calls
+    }
+
     private fun extractText(response: JSONObject): String {
-        val candidates = response.optJSONArray("candidates") ?: return ""
-        if (candidates.length() == 0) return ""
-        val parts = candidates.getJSONObject(0)
-            .optJSONObject("content")
-            ?.optJSONArray("parts")
-            ?: return ""
         val builder = StringBuilder()
-        for (index in 0 until parts.length()) {
-            val text = parts.optJSONObject(index)?.optString("text").orEmpty()
-            if (text.isNotBlank()) {
-                if (builder.isNotEmpty()) builder.append(' ')
-                builder.append(text)
+        val steps = steps(response)
+        for (index in 0 until steps.length()) {
+            val step = steps.optJSONObject(index) ?: continue
+            if (step.optString("type") != "model_output") continue
+            val content = step.optJSONArray("content") ?: continue
+            for (item in 0 until content.length()) {
+                val block = content.optJSONObject(item) ?: continue
+                if (block.optString("type") != "text") continue
+                val text = block.optString("text")
+                if (text.isNotBlank()) {
+                    if (builder.isNotEmpty()) builder.append(' ')
+                    builder.append(text)
+                }
             }
         }
         return builder.toString()
     }
 
     private fun shouldTryNext(code: Int, message: String): Boolean {
-        if (code == 404) return true
+        // Cota (429) não é tratada aqui: é do projeto, então o ask() para de tentar.
+        if (code == 404 || code == 503) return true
         val lower = message.lowercase()
         return code == 400 && (
             lower.contains("not found") ||
                 lower.contains("not supported") ||
-                lower.contains("unknown model")
+                lower.contains("unknown model") ||
+                lower.contains("model is not available")
             )
     }
 
-    private fun friendlyMessage(code: Int, raw: String): String = when {
+    private fun friendlyMessage(
+        code: Int,
+        raw: String,
+        retryAfter: Int? = null
+    ): String = when {
         code == 400 && raw.contains("API key", ignoreCase = true) ->
             "Chave da API inválida. Confira e tente novamente."
         code == 401 || code == 403 ->
             "Chave não autorizada. Verifique se ela está ativa no Google AI Studio."
-        code == 429 ->
-            "Limite gratuito atingido por agora. Aguarde um pouco e tente de novo."
+        code == 429 || raw.contains("quota", ignoreCase = true) ->
+            if (consecutiveQuotaHits >= 1) dailyQuotaMessage() else quotaMessage(retryAfter)
         code == 404 ->
             "Modelo indisponível para esta chave."
         code in 500..599 ->

@@ -69,6 +69,25 @@ sem esticar a imagem atrás dos textos. O ícone vem de `icons/`.
    WhatsApp** na mesma seção.
 6. Diga **"Jarvis, que horas são?"** (ou a palavra configurada).
 
+### Cota do Gemini
+
+O app conversa com o Gemini pela **Interactions API** — é a interface exigida
+pelas chaves novas no formato `AQ.` (o antigo `generateContent` devolve 429
+para elas). A cota é do **projeto do Google AI Studio**, não da chave: gerar
+outra chave dentro do mesmo projeto não aumenta o limite.
+
+No plano gratuito o limite diário de requisições é baixo e reinicia à
+meia-noite do horário do Pacífico (cerca de 5h da manhã no horário de Brasília).
+Quando ele acaba, o Jarvis para de insistir: aguarda o tempo indicado pelo
+Google (`Retry-After`) e, se o bloqueio continuar, avisa que a cota do dia
+acabou. Cada pergunta gera normalmente **uma** requisição (duas quando há uma
+ação no aparelho), para gastar o mínimo de cota.
+
+Para uso intenso, ative o faturamento do projeto no
+[Google AI Studio](https://aistudio.google.com/), o que eleva o limite para o
+Tier 1, ou use um projeto com cota maior. A voz personalizada do Fish Audio é
+independente: usa a chave e os créditos da sua conta Fish.
+
 ## Vozes: Gemini, aparelho e voz personalizada
 
 Em **Ajustes → Motor de voz** o usuário escolhe entre:
@@ -379,8 +398,9 @@ O arquivo `jarvis_server.py` é o backend antigo (FastAPI + Gemini no PC) e **n�
 - As vozes do Gemini precisam de internet e consomem cota da API; o áudio
   começa a tocar em ~1,5 s, um pouco mais devagar que a voz local. Sem conexão
   ou cota, o Jarvis continua falando com a voz do aparelho.
-- A cota gratuita do Gemini tem limite de requisições; o app avisa quando ela é
-  atingida.
+- A cota gratuita do Gemini tem limite baixo de requisições por dia; o app
+  avisa, respeita o `Retry-After` e para de tentar por um instante quando ela
+  acaba (veja **Cota do Gemini** acima).
 - A voz personalizada depende da conta do Fish Audio: a API key é do usuário e
   os modelos pagos (`S2.1 Pro`, `Drama 3`) consomem créditos. O áudio chega em
   MP3 e leva um pouco mais para começar que o streaming do Gemini, por isso

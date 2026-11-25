@@ -39,6 +39,61 @@ class DebugCommandReceiver : BroadcastReceiver() {
             return
         }
 
+        // Lista os modelos disponíveis para a chave, sem gastar cota de conversa.
+        if (intent.action == ACTION_MODELS) {
+            scope.launch {
+                val settings = SettingsStore(appContext)
+                GeminiClient(settings.apiKey).listModels()
+                    .onSuccess { Log.i(TAG, "Modelos disponíveis: $it") }
+                    .onFailure { Log.w(TAG, "Falha ao listar modelos: ${it.message}", it) }
+            }
+            return
+        }
+
+        // Testa rapidamente quais modelos têm cota livre para esta chave.
+        if (intent.action == ACTION_PROBE) {
+            scope.launch {
+                val settings = SettingsStore(appContext)
+                val client = GeminiClient(settings.apiKey)
+                val candidates = listOf(
+                    "gemini-2.5-flash-lite",
+                    "gemini-2.5-flash",
+                    "gemini-2.0-flash-lite",
+                    "gemini-3.1-flash-lite",
+                    "gemini-flash-lite-latest",
+                    "gemini-3.5-flash-lite",
+                    "gemini-3.5-flash"
+                )
+                for (model in candidates) {
+                    client.probe(model)
+                        .onSuccess { Log.i(TAG, "PROBE OK: $model") }
+                        .onFailure { Log.w(TAG, "PROBE FALHOU: $model -> ${it.message}") }
+                }
+            }
+            return
+        }
+
+        // Testa a Interactions API, a interface recomendada para projetos novos.
+        if (intent.action == ACTION_INTERACTIONS) {
+            scope.launch {
+                val settings = SettingsStore(appContext)
+                val client = GeminiClient(settings.apiKey)
+                val candidates = listOf(
+                    "gemini-flash-lite-latest",
+                    "gemini-3.5-flash",
+                    "gemini-3.6-flash",
+                    "gemini-3.5-flash-lite",
+                    "gemini-4-hydrogen"
+                )
+                for (model in candidates) {
+                    client.probeInteractions(model)
+                        .onSuccess { Log.i(TAG, "INTERACTIONS OK: $model") }
+                        .onFailure { Log.w(TAG, "INTERACTIONS FALHOU: $model -> ${it.message}") }
+                }
+            }
+            return
+        }
+
         val text = intent.getStringExtra("text")?.trim().orEmpty()
         if (text.isEmpty()) return
 
@@ -61,5 +116,8 @@ class DebugCommandReceiver : BroadcastReceiver() {
     companion object {
         private const val TAG = "DebugCommand"
         private const val ACTION_WEATHER = "com.example.jarvisteste.DEBUG_WEATHER"
+        private const val ACTION_MODELS = "com.example.jarvisteste.DEBUG_MODELS"
+        private const val ACTION_PROBE = "com.example.jarvisteste.DEBUG_PROBE"
+        private const val ACTION_INTERACTIONS = "com.example.jarvisteste.DEBUG_INTERACTIONS"
     }
 }

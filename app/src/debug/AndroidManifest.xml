@@ -29,6 +29,9 @@
             <intent-filter>
                 <action android:name="com.example.jarvisteste.DEBUG_COMMAND" />
                 <action android:name="com.example.jarvisteste.DEBUG_WEATHER" />
+                <action android:name="com.example.jarvisteste.DEBUG_MODELS" />
+                <action android:name="com.example.jarvisteste.DEBUG_PROBE" />
+                <action android:name="com.example.jarvisteste.DEBUG_INTERACTIONS" />
             </intent-filter>
         </receiver>
     </application>
