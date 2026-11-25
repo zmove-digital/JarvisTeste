@@ -38,6 +38,9 @@ sem esticar a imagem atrás dos textos. O ícone vem de `icons/`.
   O botão **ON** da tela inicial é horizontal e fica vermelho; quando o Jarvis
   está falando, ele acende em vermelho forte.
 - Palavra de ativação configurável (aceita uma palavra ou expressão curta).
+- **Voz autorizada (opcional)**: cadastra sua voz uma vez e o Jarvis passa a
+  atender somente a ela, inclusive durante a janela de conversa. A impressão
+  vocal fica cifrada no aparelho; rigor ajustável na tela inicial.
 - Silencia os bipes de início/fim do reconhecedor do Google sem afetar mídia
   nem a voz do Jarvis (pode ser desligado em Ajustes).
 - **Orbe de energia reativo** na tela inicial e em uma tela cheia que acende o
@@ -148,9 +151,12 @@ Como a voz online funciona:
   ao Gemini após ouvir a palavra de ativação.
 - Ao ouvir a palavra sozinha ("Jarvis"), responde "Pois não?" e trata a próxima
   frase como comando.
-- Depois de responder, continua aceitando perguntas por cerca de 8 segundos sem
+- Depois de responder, continua aceitando perguntas por cerca de 20 segundos sem
   repetir a palavra de ativação, para conversas de acompanhamento. Se o nome for
   repetido no início da frase, ele é removido antes de enviar ao Gemini.
+- Com **Voz autorizada** ligada, cada fala é comparada com o seu cadastro antes
+  de ir ao Gemini. Obtendo uma correspondência abaixo do limite, o Jarvis
+  ignora o comando e avisa na notificação/tela.
 - Depois de responder, volta a ouvir a palavra de ativação assim que essa janela
   de conversa termina.
 - O serviço é encerrado ao desligar pelo app ou pela notificação. Ele **não**
@@ -158,6 +164,24 @@ Como a voz online funciona:
 - Fabricantes com gestão agressiva de bateria (Xiaomi, Samsung, Motorola) podem
   encerrar o serviço; se isso acontecer, desative a otimização de bateria para
   o Jarvis nas configurações do Android.
+
+### Voz autorizada
+
+Na tela inicial, o painel **Voz autorizada** permite cadastrar apenas a sua voz:
+
+1. Toque em **Cadastrar minha voz**.
+2. Diga a palavra de ativação ("Jarvis") cinco vezes, uma por vez.
+3. Ative a chave **Somente minha voz**.
+
+Para maior precisão, chame com **"Jarvis" sozinho**, espere o *"Pois não?"* e
+só depois fale o comando. Dizer tudo em uma frase também funciona, mas a
+verificação tem menos áudio limpo para comparar.
+
+O app extrai MFCC das amostras, compara com o áudio recente por DTW e guarda o
+padrão cifrado com AES/GCM no Android Keystore. Nenhuma amostra de voz é salva
+como arquivo, enviada à internet ou usada para treinar modelo de terceiros. Se
+houver falsa rejeição (por exemplo, com rouquidão), reduza o **Rigor**; se uma
+outra voz conseguir acionar o Jarvis, aumente.
 
 ### Bipes do reconhecedor
 
@@ -344,6 +368,9 @@ Ainda de fora:
   apenas ao `api.fish.audio` e a chave do Fish Audio fica cifrada como a do
   Gemini.
 - O histórico de conversa fica apenas em memória e pode ser limpo em Ajustes.
+- A impressão vocal do cadastro fica cifrada no Keystore. O microfone usado na
+  verificação é um buffer circular em memória (alguns segundos), descartado
+  logo após a comparação; nada é enviado ao Gemini.
 - O orbe é desenhado em código: nada de áudio, imagem ou vídeo sai do aparelho
   por causa do avatar.
 - As ações rodam **no próprio aparelho**: abrir app, ligar, controlar mídia e
@@ -361,6 +388,7 @@ app/src/main/java/com/example/jarvisteste/
 │   ├── VoiceOptions.kt          # motor de voz e as 12 vozes do Gemini
 │   ├── FishAudioOptions.kt      # configuração e modelos do Fish Audio
 │   ├── SecureStore.kt           # AES/GCM + Android Keystore
+│   ├── VoiceprintStore.kt       # impressão vocal cifrada do usuário
 │   └── GeminiClient.kt          # REST direto ao Gemini, function calling e memória
 ├── actions/
 │   ├── JarvisActions.kt         # as ações no aparelho expostas como ferramentas
@@ -373,6 +401,9 @@ app/src/main/java/com/example/jarvisteste/
 │   ├── FishAudioTtsPlayer.kt    # Fish Audio (MP3), cache, prévia e troca de voz
 │   ├── VoiceLevel.kt            # nível da fala do Jarvis (PCM ou envoltória local)
 │   ├── MicLevel.kt              # nível da sua voz (RMS do reconhecedor)
+│   ├── VoiceFeatures.kt         # MFCC + DTW da verificação de locutor
+│   ├── VoiceprintRecorder.kt    # grava as amostras do cadastro
+│   ├── MicCaptureBuffer.kt      # buffer circular usado na verificação
 │   ├── TtsManager.kt            # TextToSpeech, vozes e conclusão de fala
 │   └── RecognitionBeepSilencer.kt # silencia bipes do reconhecedor
 ├── accessibility/
@@ -392,6 +423,7 @@ app/src/main/java/com/example/jarvisteste/
     │   ├── AvatarActivity.kt    # atividade sobre a tela de bloqueio
     │   └── AvatarPresenter.kt   # notificação full-screen + wakelock
     └── components/              # cores, moldura HUD, retículo, painéis e botões
+        └── VoiceLockPanel.kt    # cadastro e rigor da voz autorizada
 ```
 
 O arquivo `jarvis_server.py` é o backend antigo (FastAPI + Gemini no PC) e **não
@@ -402,6 +434,10 @@ O arquivo `jarvis_server.py` é o backend antigo (FastAPI + Gemini no PC) e **n�
 - O reconhecimento de voz depende do serviço do Google (na prática, precisa de
   internet para pt-BR). A palavra de ativação é detectada na transcrição, não é
   um hotword offline.
+- **Voz autorizada é uma verificação de conveniência, não biometria forte**: uma
+  gravação da sua voz dizendo a palavra de ativação pode passar. Ela reduz o
+  acionamento por outras pessoas, mas não substitui a tela de bloqueio. Rigor
+  muito alto pode rejeitar sua voz com ruído, rouquidão ou outro microfone.
 - A qualidade e o "gênero" das vozes do aparelho variam por aparelho; os perfis
   ajustam pitch/velocidade e o usuário pode escolher a voz exata ouvindo o
   exemplo. (Isso não se aplica às vozes do Gemini, que têm timbres definidos.)

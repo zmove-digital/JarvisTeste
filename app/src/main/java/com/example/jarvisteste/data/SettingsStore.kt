@@ -178,6 +178,19 @@ class SettingsStore(context: Context) {
         set(value) = prefs.edit().putBoolean(KEY_ALWAYS_LISTENING, value).apply()
 
     /**
+     * Quando ativo, o Jarvis só aceita comandos vindos da voz cadastrada.
+     * O padrão biométrico fica em [VoiceprintStore], nunca aqui.
+     */
+    var voiceLockEnabled: Boolean
+        get() = prefs.getBoolean(KEY_VOICE_LOCK_ENABLED, false)
+        set(value) = prefs.edit().putBoolean(KEY_VOICE_LOCK_ENABLED, value).apply()
+
+    /** 0 = mais tolerante, 100 = mais rigoroso na comparação da voz. */
+    var voiceLockStrictness: Int
+        get() = prefs.getInt(KEY_VOICE_LOCK_STRICTNESS, 55)
+        set(value) = prefs.edit().putInt(KEY_VOICE_LOCK_STRICTNESS, value.coerceIn(0, 100)).apply()
+
+    /**
      * Silencia os "bipes" do serviço de reconhecimento do Google (início/fim de
      * escuta) durante janelas curtas. Não afeta mídia nem a voz do Jarvis.
      */
@@ -201,6 +214,8 @@ class SettingsStore(context: Context) {
         private const val KEY_RATE = "voice_rate"
         private const val KEY_WAKE_WORD = "wake_word"
         private const val KEY_ALWAYS_LISTENING = "always_listening"
+        private const val KEY_VOICE_LOCK_ENABLED = "voice_lock_enabled"
+        private const val KEY_VOICE_LOCK_STRICTNESS = "voice_lock_strictness"
         private const val KEY_SILENCE_BEEPS = "silence_beeps"
         const val DEFAULT_WAKE_WORD = "jarvis"
     }

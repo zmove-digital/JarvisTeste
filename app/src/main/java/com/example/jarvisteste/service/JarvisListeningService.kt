@@ -23,20 +23,26 @@ import androidx.core.content.ContextCompat
 import com.example.jarvisteste.MainActivity
 import com.example.jarvisteste.R
 import com.example.jarvisteste.actions.JarvisActions
+import com.example.jarvisteste.audio.MicCaptureBuffer
 import com.example.jarvisteste.audio.MicLevel
 import com.example.jarvisteste.audio.RecognitionBeepSilencer
+import com.example.jarvisteste.audio.VoiceFeatures
 import com.example.jarvisteste.audio.VoiceManager
+import com.example.jarvisteste.audio.VoiceprintMatcher
 import com.example.jarvisteste.data.GeminiClient
 import com.example.jarvisteste.data.SettingsStore
+import com.example.jarvisteste.data.VoiceprintStore
 import com.example.jarvisteste.ui.avatar.AvatarPresenter
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import java.text.Normalizer
 import java.util.Locale
@@ -64,9 +70,12 @@ class JarvisListeningService : Service(), RecognitionListener {
     private var wakeLock: PowerManager.WakeLock? = null
     private var beepSilencer: RecognitionBeepSilencer? = null
     private var avatarPresenter: AvatarPresenter? = null
+    private var micCapture: MicCaptureBuffer? = null
+    private var pendingVoiceSnapshot: FloatArray? = null
 
     private var awake = false
     private var speaking = false
+    private var verifying = false
     private var destroyed = false
     private var speechToken = 0
     private var lastTranscript = ""
@@ -79,7 +88,7 @@ class JarvisListeningService : Service(), RecognitionListener {
      * segundos — evita mandar conversa ambiente ao Gemini para sempre.
      */
     private val endAwakeRunnable = Runnable {
-        if (destroyed || speaking || !awake) return@Runnable
+        if (destroyed || speaking || verifying || !awake) return@Runnable
         awake = false
         Log.i(TAG, "Janela de conversa encerrada; voltando à palavra de ativação")
         avatarPresenter?.hide()
@@ -133,6 +142,7 @@ class JarvisListeningService : Service(), RecognitionListener {
         voice = VoiceManager(this) { SettingsStore(this).apiKey }
         // Deixa o "Pois não?" do despertar já sintetizado para responder sem espera.
         voice?.prewarmPrompt("Pois não?", SettingsStore(this))
+        configureVoiceCapture()
         beepSilencer = RecognitionBeepSilencer(this)
         avatarPresenter = AvatarPresenter(this)
 
@@ -155,6 +165,8 @@ class JarvisListeningService : Service(), RecognitionListener {
             stopSelf()
             return START_NOT_STICKY
         }
+        // O usuário pode ativar/desativar a voz autorizada com o serviço ligado.
+        configureVoiceCapture()
         return START_STICKY
     }
 
@@ -167,6 +179,8 @@ class JarvisListeningService : Service(), RecognitionListener {
         recognizer = null
         runCatching { voice?.shutdown() }
         voice = null
+        micCapture?.stop()
+        micCapture = null
         runCatching { beepSilencer?.release() }
         beepSilencer = null
         avatarPresenter?.hide()
@@ -185,8 +199,9 @@ class JarvisListeningService : Service(), RecognitionListener {
     // ---------------------------------------------------------------- escuta
 
     private fun startListening() {
-        if (destroyed || speaking) return
+        if (destroyed || speaking || verifying) return
         val engine = recognizer ?: return
+        pendingVoiceSnapshot = null
         mainHandler.removeCallbacks(restartRunnable)
         mainHandler.removeCallbacks(preemptiveBeepMute)
         if (SettingsStore(this).silenceBeeps) {
@@ -203,7 +218,7 @@ class JarvisListeningService : Service(), RecognitionListener {
     }
 
     private fun scheduleRestart(delayMs: Long) {
-        if (destroyed || speaking) return
+        if (destroyed || speaking || verifying) return
         mainHandler.removeCallbacks(restartRunnable)
         mainHandler.postDelayed(restartRunnable, delayMs)
     }
@@ -224,6 +239,11 @@ class JarvisListeningService : Service(), RecognitionListener {
     override fun onBufferReceived(buffer: ByteArray?) = Unit
 
     override fun onEndOfSpeech() {
+        // Guarda o áudio assim que a fala termina: o resultado do reconhecedor
+        // pode chegar bem depois, e o buffer circular já terá avançado.
+        if (SettingsStore(this).voiceLockEnabled) {
+            pendingVoiceSnapshot = micCapture?.snapshot()
+        }
         // O bipe de "sucesso" toca quando o serviço entende que a fala acabou.
         if (SettingsStore(this).silenceBeeps) {
             beepSilencer?.suppress(END_OF_SPEECH_WINDOW_MS)
@@ -270,7 +290,7 @@ class JarvisListeningService : Service(), RecognitionListener {
     }
 
     override fun onResults(results: Bundle?) {
-        if (destroyed) return
+        if (destroyed || verifying) return
         // O bipe de "sucesso" pode tocar pouco antes deste callback.
         if (SettingsStore(this).silenceBeeps) {
             beepSilencer?.suppress(TERMINAL_WINDOW_MS)
@@ -290,29 +310,32 @@ class JarvisListeningService : Service(), RecognitionListener {
         lastTranscript = text
         Log.i(TAG, "Transcrição final: \"$text\" (awake=$awake)")
 
+        val settings = SettingsStore(this)
         val normalized = normalize(text)
         val tokens = normalized.split(' ').filter { it.isNotBlank() }
-        val wakeTokens = normalize(SettingsStore(this).wakeWord)
+        val wakeTokens = normalize(settings.wakeWord)
             .split(' ')
             .filter { it.isNotBlank() }
         val wakeRange = findWakeRange(tokens, wakeTokens)
 
         if (awake) {
-            // Modo de conversa: aceita a fala sem exigir o nome. Se a pessoa
-            // repetir o nome no começo ("Rafinha, ..."), ele é removido.
-            mainHandler.removeCallbacks(endAwakeRunnable)
-            avatarPresenter?.show(force = false)
-            val command = if (wakeRange != null && wakeRange.first == 0) {
-                tokens.drop(wakeRange.last + 1).joinToString(" ").trim()
-            } else {
-                text.trim()
-            }
-            Log.i(TAG, "Comando (modo conversa): \"$command\"")
-            if (command.isEmpty()) {
-                awake = true
-                speakPrompt("Pois não?")
-            } else {
-                handleCommand(command)
+            verifyVoiceThen(settings) {
+                // Modo de conversa: aceita a fala sem exigir o nome. Se a pessoa
+                // repetir o nome no começo ("Rafinha, ..."), ele é removido.
+                mainHandler.removeCallbacks(endAwakeRunnable)
+                avatarPresenter?.show(force = false)
+                val command = if (wakeRange != null && wakeRange.first == 0) {
+                    tokens.drop(wakeRange.last + 1).joinToString(" ").trim()
+                } else {
+                    text.trim()
+                }
+                Log.i(TAG, "Comando (modo conversa): \"$command\"")
+                if (command.isEmpty()) {
+                    awake = true
+                    speakPrompt("Pois não?")
+                } else {
+                    handleCommand(command)
+                }
             }
             return
         }
@@ -330,15 +353,17 @@ class JarvisListeningService : Service(), RecognitionListener {
             return
         }
 
-        // Acordou: acende a tela e mostra o avatar antes de consultar o Gemini.
-        avatarPresenter?.show(force = true)
+        verifyVoiceThen(settings) {
+            // Acordou: acende a tela e mostra o avatar antes de consultar o Gemini.
+            avatarPresenter?.show(force = true)
 
-        val command = tokens.drop(wakeRange.last + 1).joinToString(" ").trim()
-        if (command.isEmpty()) {
-            awake = true
-            speakPrompt("Pois não?")
-        } else {
-            handleCommand(command)
+            val command = tokens.drop(wakeRange.last + 1).joinToString(" ").trim()
+            if (command.isEmpty()) {
+                awake = true
+                speakPrompt("Pois não?")
+            } else {
+                handleCommand(command)
+            }
         }
     }
 
@@ -439,6 +464,123 @@ class JarvisListeningService : Service(), RecognitionListener {
     }
 
     // ------------------------------------------------------------ utilidades
+
+    /** Liga/desliga a captura de áudio usada apenas pela verificação de voz. */
+    private fun configureVoiceCapture() {
+        val settings = SettingsStore(this)
+        val needed = settings.voiceLockEnabled && VoiceprintStore(this).hasEnrollment
+        if (!needed) {
+            micCapture?.stop()
+            micCapture = null
+            return
+        }
+        if (micCapture == null) micCapture = MicCaptureBuffer(this)
+        if (micCapture?.start() == true) {
+            Log.i(TAG, "Captura para verificação de voz ativa")
+        } else {
+            Log.w(TAG, "Não foi possível capturar áudio para verificar a voz")
+        }
+    }
+
+    /**
+     * Confere o áudio recente com a voz cadastrada antes de atender. Vale para
+     * a palavra de ativação e para cada fala da janela de conversa, para que
+     * outra pessoa não consiga comandar o Jarvis depois que ele acordou.
+     */
+    private fun verifyVoiceThen(settings: SettingsStore, onAccepted: () -> Unit) {
+        if (!settings.voiceLockEnabled) {
+            onAccepted()
+            return
+        }
+
+        val store = VoiceprintStore(this)
+        if (!store.hasEnrollment) {
+            Log.w(TAG, "Voz autorizada ligada sem cadastro; ignorando comando")
+            publishStatus(
+                ListeningPhase.LISTENING,
+                "Voz autorizada ativada, mas sem cadastro. Cadastre sua voz no aplicativo.",
+                lastTranscript
+            )
+            scheduleRestart(600)
+            return
+        }
+
+        if (micCapture == null) configureVoiceCapture()
+        // Prefere o áudio capturado no fim da fala: o callback final pode vir
+        // muito depois e o buffer já não conteria mais a palavra dita.
+        val snapshot = pendingVoiceSnapshot ?: micCapture?.snapshot()
+        pendingVoiceSnapshot = null
+        if (snapshot == null) {
+            Log.w(TAG, "Sem áudio recente para verificar a voz; ignorando comando")
+            publishStatus(
+                ListeningPhase.LISTENING,
+                "Não consegui verificar sua voz. Permita o microfone e reinicie a escuta.",
+                lastTranscript
+            )
+            scheduleRestart(800)
+            return
+        }
+
+        verifying = true
+        publishStatus(ListeningPhase.THINKING, "Verificando sua voz...", lastTranscript)
+        scope.launch(Dispatchers.Default) {
+            var delivered = false
+            try {
+                val result = runCatching {
+                    VoiceprintMatcher.bestScore(
+                        snapshot,
+                        VoiceFeatures.SAMPLE_RATE,
+                        store.templates
+                    )
+                }
+                result.onFailure { Log.w(TAG, "Falha ao verificar a voz", it) }
+                val score = result.getOrDefault(0f)
+                val limit = VoiceprintMatcher.threshold(settings.voiceLockStrictness)
+                val accepted = result.isSuccess && score >= limit
+                Log.i(
+                    TAG,
+                    String.format(
+                        Locale.ROOT,
+                        "Voz: score=%.3f limite=%.3f aceito=%s",
+                        score,
+                        limit,
+                        accepted
+                    )
+                )
+                withContext(Dispatchers.Main.immediate) {
+                    delivered = true
+                    if (destroyed) return@withContext
+                    verifying = false
+                    if (accepted) {
+                        onAccepted()
+                    } else {
+                        awake = false
+                        avatarPresenter?.hide()
+                        mainHandler.removeCallbacks(endAwakeRunnable)
+                        publishStatus(
+                            ListeningPhase.LISTENING,
+                            "Não reconheci sua voz (${(score * 100).toInt()}%). " +
+                                "Diga \"${settings.wakeWord}\" com a voz cadastrada.",
+                            lastTranscript
+                        )
+                        scheduleRestart(300)
+                    }
+                }
+            } finally {
+                withContext(NonCancellable + Dispatchers.Main.immediate) {
+                    if (!delivered && !destroyed) {
+                        verifying = false
+                        publishStatus(
+                            ListeningPhase.LISTENING,
+                            "Não consegui verificar sua voz. Tentando de novo...",
+                            lastTranscript
+                        )
+                        scheduleRestart(500)
+                    }
+                }
+            }
+        }
+    }
 
     private fun wakeListeningMessage(): String {
         val wake = SettingsStore(this).wakeWord.replaceFirstChar { it.uppercase() }
@@ -632,6 +774,14 @@ class JarvisListeningService : Service(), RecognitionListener {
 
         fun stop(context: Context) {
             context.stopService(Intent(context, JarvisListeningService::class.java))
+        }
+
+        /** Aplica mudanças de configuração sem pedir para o usuário religar. */
+        fun restart(context: Context) {
+            stop(context)
+            // Dá tempo ao onDestroy da instância anterior para liberar o
+            // microfone antes de criar a nova sessão de escuta.
+            Handler(Looper.getMainLooper()).postDelayed({ start(context) }, 300)
         }
     }
 }

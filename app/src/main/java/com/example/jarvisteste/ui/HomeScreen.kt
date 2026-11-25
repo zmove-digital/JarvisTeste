@@ -68,6 +68,7 @@ import com.example.jarvisteste.ui.components.HudPanel
 import com.example.jarvisteste.ui.components.HudReticle
 import com.example.jarvisteste.ui.components.JarvisBackground
 import com.example.jarvisteste.ui.components.JarvisColors
+import com.example.jarvisteste.ui.components.VoiceLockPanel
 import kotlinx.coroutines.launch
 import java.util.Locale
 
@@ -509,6 +510,11 @@ fun HomeScreen(
                 }
             }
 
+            Spacer(modifier = Modifier.height(18.dp))
+
+            // ------------------------------------------------ voz autorizada
+            VoiceLockPanel(settings = settings)
+
             Spacer(modifier = Modifier.height(34.dp))
 
             // ------------------------------------------- botão ON horizontal
@@ -603,6 +609,8 @@ fun HomeScreen(
 
             Text(
                 text = when {
+                    listeningActive && settings.voiceLockEnabled ->
+                        "Diga \"$wakeWord\" com sua voz cadastrada. Toque em ON para desligar."
                     listeningActive ->
                         "Diga \"$wakeWord\" e faça seu pedido. Toque em ON para desligar."
                     isListening -> "JARVIS está ouvindo você."
