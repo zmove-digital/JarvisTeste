@@ -325,9 +325,9 @@ fun VoicePicker(
                 if (showFishAudio) {
                     JarvisLabel("Voz do Fish Audio")
                     Text(
-                        text = "Cole o link da voz (fish.audio/m/...) ou o ID do " +
-                            "modelo. Pode ser uma voz do catálogo ou uma clonagem " +
-                            "feita por você.",
+                        text = "Cole o link completo da voz, terminando no ID " +
+                            "(fish.audio/m/ID), ou o ID do modelo. Pode ser uma voz do " +
+                            "catálogo ou uma clonagem feita por você.",
                         color = JarvisColors.TextMuted,
                         fontSize = 12.sp
                     )
@@ -455,7 +455,8 @@ private fun FishAudioFields(
             config.voiceId.isBlank() ->
                 "Ex.: https://fish.audio/m/00000000000000000000000000000000"
             parsedId == null ->
-                "Não encontrei um ID válido. Cole o link completo da voz ou o ID do modelo."
+                "Link incompleto ou inválido. Ele precisa terminar com o ID da voz, " +
+                    "ex.: https://fish.audio/m/abc123..."
             else -> "Voz selecionada: $parsedId"
         },
         color = if (parsedId != null) JarvisColors.Success else JarvisColors.TextMuted,
