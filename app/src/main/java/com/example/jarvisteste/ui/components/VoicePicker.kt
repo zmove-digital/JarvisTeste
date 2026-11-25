@@ -44,6 +44,7 @@ import com.example.jarvisteste.data.VoiceEngine
 import com.example.jarvisteste.data.VoiceGender
 import com.example.jarvisteste.data.VoiceProfile
 import com.example.jarvisteste.data.VoiceProfiles
+import com.example.jarvisteste.data.looksLikeGeminiKey
 import com.example.jarvisteste.data.parseFishVoiceId
 
 @Composable
@@ -426,6 +427,15 @@ private fun FishAudioFields(
         },
         colors = jarvisFieldColors()
     )
+
+    if (looksLikeGeminiKey(config.apiKey)) {
+        Text(
+            text = "Essa parece ser uma chave do Gemini (AIza...). A chave do Fish " +
+                "Audio começa com sk-fish- e é criada em fish.audio/app/api-keys.",
+            color = JarvisColors.Danger,
+            fontSize = 11.sp
+        )
+    }
 
     OutlinedTextField(
         value = config.voiceId,

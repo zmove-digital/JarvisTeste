@@ -59,6 +59,14 @@ object FishAudioModels {
 
 private val FISH_VOICE_ID = Regex("([0-9a-fA-F]{32})")
 
+/** Chaves do Gemini começam com "AIza". */
+fun looksLikeGeminiKey(input: String?): Boolean =
+    input?.trim()?.startsWith("AIza", ignoreCase = true) == true
+
+/** Chaves do Fish Audio começam com "sk-fish-". */
+fun looksLikeFishKey(input: String?): Boolean =
+    input?.trim()?.startsWith("sk-fish-", ignoreCase = true) == true
+
 /**
  * Extrai o ID do modelo de voz de um link do Fish Audio (ou devolve o próprio
  * ID, se o usuário colou apenas ele).

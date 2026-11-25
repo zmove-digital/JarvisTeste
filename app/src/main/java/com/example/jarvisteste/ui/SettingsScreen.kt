@@ -55,6 +55,8 @@ import com.example.jarvisteste.data.FishAudioConfig
 import com.example.jarvisteste.data.GeminiClient
 import com.example.jarvisteste.data.SettingsStore
 import com.example.jarvisteste.data.VoiceEngine
+import com.example.jarvisteste.data.looksLikeFishKey
+import com.example.jarvisteste.data.looksLikeGeminiKey
 import com.example.jarvisteste.data.VoiceProfiles
 import com.example.jarvisteste.ui.avatar.AvatarActivity
 import com.example.jarvisteste.ui.avatar.AvatarMood
@@ -110,6 +112,13 @@ fun SettingsScreen(
     )
 
     fun save(showConfirmation: Boolean = true) {
+        if (looksLikeFishKey(apiKey)) {
+            feedback = "Essa é uma chave do Fish Audio, não do Gemini. " +
+                "Cole a chave do Gemini (começa com AIza) aqui e use a do Fish Audio " +
+                "em Motor de voz → Voz personalizada."
+            feedbackIsError = true
+            return
+        }
         settings.apiKey = apiKey
         settings.wakeWord = wakeWord
         settings.silenceBeeps = silenceBeeps
@@ -141,6 +150,12 @@ fun SettingsScreen(
         val trimmed = apiKey.trim()
         if (trimmed.isEmpty()) {
             feedback = "Informe uma chave para testar."
+            feedbackIsError = true
+            return
+        }
+        if (looksLikeFishKey(trimmed)) {
+            feedback = "Essa é uma chave do Fish Audio. Ela vai em " +
+                "Motor de voz → Voz personalizada; aqui é a chave do Gemini (AIza...)."
             feedbackIsError = true
             return
         }
@@ -188,7 +203,9 @@ fun SettingsScreen(
             JarvisLabel("Conta")
             Spacer(modifier = Modifier.height(10.dp))
             Text(
-                text = "Sua chave do Google AI Studio. Ela fica cifrada neste aparelho.",
+                text = "Sua chave do Google AI Studio (começa com AIza). Ela fica cifrada " +
+                    "neste aparelho. A chave do Fish Audio vai em Motor de voz → Voz " +
+                    "personalizada.",
                 color = JarvisColors.TextMuted,
                 fontSize = 12.sp
             )
@@ -363,6 +380,9 @@ fun SettingsScreen(
                     val missing = when {
                         engine != VoiceEngine.FISH_AUDIO -> null
                         fishConfig.apiKey.isBlank() -> "Informe a API key do Fish Audio."
+                        looksLikeGeminiKey(fishConfig.apiKey) ->
+                            "Essa é uma chave do Gemini. Cole aqui a chave do Fish Audio " +
+                                "(começa com sk-fish-)."
                         fishConfig.resolvedVoiceId.isBlank() ->
                             "Cole o link ou o ID da voz do Fish Audio."
                         else -> null
