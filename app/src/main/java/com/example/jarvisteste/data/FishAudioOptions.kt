@@ -13,12 +13,12 @@ data class FishAudioConfig(
     val voiceName: String = "",
     val model: String = FishAudioModels.DEFAULT
 ) {
-    /** ID de 32 caracteres extraído do link (ou o texto digitado, se já for o ID). */
+    /** ID extraído do link; vazio se o texto não for um link/ID válido. */
     val resolvedVoiceId: String
-        get() = parseFishVoiceId(voiceId) ?: voiceId.trim()
+        get() = parseFishVoiceId(voiceId).orEmpty()
 
     val ready: Boolean
-        get() = apiKey.isNotBlank() && resolvedVoiceId.isNotBlank()
+        get() = apiKey.isNotBlank() && isValidFishVoiceId(resolvedVoiceId)
 }
 
 /** Modelos de síntese oferecidos pela API oficial do Fish Audio. */
@@ -57,8 +57,6 @@ object FishAudioModels {
     fun byId(id: String?): Option = all.firstOrNull { it.id == id } ?: all.first()
 }
 
-private val FISH_VOICE_ID = Regex("([0-9a-fA-F]{32})")
-
 /** Chaves do Gemini usam o formato novo "AQ." ou o antigo "AIza". */
 fun looksLikeGeminiKey(input: String?): Boolean {
     val text = input?.trim().orEmpty()
@@ -71,12 +69,32 @@ fun looksLikeGeminiKey(input: String?): Boolean {
 fun looksLikeFishKey(input: String?): Boolean =
     input?.trim()?.startsWith("sk-fish-", ignoreCase = true) == true
 
+private val FISH_VOICE_ID = Regex("[A-Za-z0-9_-]{1,128}")
+private val FISH_VOICE_URL = Regex(
+    """fish\.audio/(?:m|voice|v|model)/([A-Za-z0-9_-]{1,128})""",
+    RegexOption.IGNORE_CASE
+)
+private val FISH_LONG_TOKEN = Regex("[A-Za-z0-9_-]{16,128}")
+
+/** O Fish Audio aceita de 1 a 128 caracteres em `[A-Za-z0-9_-]`. */
+fun isValidFishVoiceId(value: String?): Boolean =
+    value?.trim()?.matches(FISH_VOICE_ID) == true
+
 /**
  * Extrai o ID do modelo de voz de um link do Fish Audio (ou devolve o próprio
- * ID, se o usuário colou apenas ele).
+ * ID, se o usuário colou apenas ele). IDs podem ter letras, números, `_` e `-`,
+ * não só hexadecimal.
  */
 fun parseFishVoiceId(input: String?): String? {
     val text = input?.trim().orEmpty()
     if (text.isEmpty()) return null
-    return FISH_VOICE_ID.find(text)?.groupValues?.getOrNull(1)?.lowercase()
+    if (isValidFishVoiceId(text)) return text
+
+    FISH_VOICE_URL.find(text)?.groupValues?.getOrNull(1)
+        ?.takeIf { it.isNotBlank() }
+        ?.let { return it }
+
+    return FISH_LONG_TOKEN.findAll(text)
+        .map { it.value }
+        .firstOrNull()
 }

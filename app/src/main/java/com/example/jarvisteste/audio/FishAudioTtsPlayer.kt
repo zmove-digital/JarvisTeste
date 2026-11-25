@@ -6,6 +6,7 @@ import android.media.MediaPlayer
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import com.example.jarvisteste.data.isValidFishVoiceId
 import com.example.jarvisteste.data.sanitizeForSpeech
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -62,6 +63,17 @@ class FishAudioTtsPlayer(context: Context) {
         if (apiKey.isBlank() || voiceId.isBlank()) {
             mainHandler.post {
                 onFailure(IllegalStateException("Configure a API key e a voz do Fish Audio."))
+            }
+            return
+        }
+        if (!isValidFishVoiceId(voiceId)) {
+            mainHandler.post {
+                onFailure(
+                    IllegalStateException(
+                        "O link/ID da voz do Fish Audio é inválido. Cole o link completo " +
+                            "(fish.audio/m/...) ou o ID."
+                    )
+                )
             }
             return
         }

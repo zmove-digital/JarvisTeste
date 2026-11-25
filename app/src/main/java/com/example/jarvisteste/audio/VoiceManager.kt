@@ -120,7 +120,13 @@ class VoiceManager(
         token: Int
     ) {
         if (!config.ready) {
-            onError?.invoke("Informe a API key e o link da voz do Fish Audio.")
+            val message = if (config.apiKey.isBlank()) {
+                "Informe a API key do Fish Audio."
+            } else {
+                "O link/ID da voz do Fish Audio é inválido. Cole o link completo " +
+                    "(fish.audio/m/...) ou o ID de até 128 caracteres."
+            }
+            onError?.invoke(message)
             speakGeminiOrSystem(
                 text, geminiVoiceId, profile, voiceName, pitch, rate, onDone, token
             )
