@@ -70,6 +70,15 @@ class GeminiClient(private val apiKey: String) {
         private var quotaBlockedUntil = 0L
         @Volatile
         private var consecutiveQuotaHits = 0
+
+        /**
+         * A busca do Google tem cota separada. Quando ela falha, desativamos o
+         * grounding pelo resto do processo: cada nova instância de [GeminiClient]
+         * tentaria de novo e consumiria mais uma requisição com 429.
+         */
+        @Volatile
+        private var googleSearchAvailable = true
+
         private const val DEFAULT_QUOTA_WAIT_SECONDS = 30
 
         private fun quotaMessage(seconds: Int? = null): String {
@@ -109,9 +118,6 @@ class GeminiClient(private val apiKey: String) {
                 "ele responder. Se uma ferramenta falhar, explique em poucas palavras. " +
                 "Nunca invente um resultado de ação."
     }
-
-    @Volatile
-    private var googleSearchAvailable = true
 
     suspend fun ask(
         message: String,
@@ -167,6 +173,12 @@ class GeminiClient(private val apiKey: String) {
                     if (grounding && SEARCH_ERROR.containsMatchIn(failure?.raw.orEmpty())) {
                         googleSearchAvailable = false
                     }
+                    continue
+                }
+                if (failure?.httpCode == 429 && grounding) {
+                    // A busca do Google tem cota própria. Se ela estiver cheia,
+                    // tentamos responder com o conhecimento do modelo e as ações.
+                    googleSearchAvailable = false
                     continue
                 }
                 break

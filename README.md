@@ -80,8 +80,14 @@ No plano gratuito o limite diário de requisições é baixo e reinicia à
 meia-noite do horário do Pacífico (cerca de 5h da manhã no horário de Brasília).
 Quando ele acaba, o Jarvis para de insistir: aguarda o tempo indicado pelo
 Google (`Retry-After`) e, se o bloqueio continuar, avisa que a cota do dia
-acabou. Cada pergunta gera normalmente **uma** requisição (duas quando há uma
-ação no aparelho), para gastar o mínimo de cota.
+acabou.
+
+A **busca do Google** (`google_search`) tem cota própria e costuma esgotar
+antes da conversa. Nesse caso o app desiste da busca e responde usando o
+conhecimento do modelo e as ações do aparelho — por isso, no primeiro 429 ele
+faz uma segunda tentativa sem busca e guarda essa decisão até você reiniciar o
+app. Com a cota normal, cada pergunta gera **uma** requisição (duas quando há
+ação no aparelho, uma para o pedido e outra para o resultado da ferramenta).
 
 Para uso intenso, ative o faturamento do projeto no
 [Google AI Studio](https://aistudio.google.com/), o que eleva o limite para o

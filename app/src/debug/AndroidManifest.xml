@@ -32,6 +32,8 @@
                 <action android:name="com.example.jarvisteste.DEBUG_MODELS" />
                 <action android:name="com.example.jarvisteste.DEBUG_PROBE" />
                 <action android:name="com.example.jarvisteste.DEBUG_INTERACTIONS" />
+                <action android:name="com.example.jarvisteste.DEBUG_KEYINFO" />
+                <action android:name="com.example.jarvisteste.DEBUG_VALIDATE" />
             </intent-filter>
         </receiver>
     </application>

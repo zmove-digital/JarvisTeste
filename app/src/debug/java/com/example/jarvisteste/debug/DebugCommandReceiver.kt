@@ -12,6 +12,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import java.security.MessageDigest
 
 /**
  * Receptor exclusivo da variante debug. Envia um comando pelo mesmo caminho da
@@ -29,6 +30,27 @@ class DebugCommandReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val appContext = context.applicationContext
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+        // Valida a chave atual sem ferramentas: mostra se a cota existe.
+        if (intent.action == ACTION_VALIDATE) {
+            scope.launch {
+                GeminiClient(SettingsStore(appContext).apiKey).validate()
+                    .onSuccess { Log.i(TAG, "VALIDATE OK: $it") }
+                    .onFailure { Log.w(TAG, "VALIDATE FALHOU: ${it.message}") }
+            }
+            return
+        }
+
+        // Mostra apenas uma impressão digital da chave, nunca seu conteúdo.
+        if (intent.action == ACTION_KEYINFO) {
+            val key = SettingsStore(appContext).apiKey.trim()
+            val hash = MessageDigest.getInstance("SHA-256")
+                .digest(key.toByteArray(Charsets.UTF_8))
+                .joinToString("") { "%02x".format(it) }
+                .take(12)
+            Log.i(TAG, "Chave Gemini: tamanho=${key.length}, inicio=${key.take(3)}, sha256=$hash")
+            return
+        }
 
         // Teste isolado do clima, sem consumir cota do Gemini.
         if (intent.action == ACTION_WEATHER) {
@@ -119,5 +141,7 @@ class DebugCommandReceiver : BroadcastReceiver() {
         private const val ACTION_MODELS = "com.example.jarvisteste.DEBUG_MODELS"
         private const val ACTION_PROBE = "com.example.jarvisteste.DEBUG_PROBE"
         private const val ACTION_INTERACTIONS = "com.example.jarvisteste.DEBUG_INTERACTIONS"
+        private const val ACTION_KEYINFO = "com.example.jarvisteste.DEBUG_KEYINFO"
+        private const val ACTION_VALIDATE = "com.example.jarvisteste.DEBUG_VALIDATE"
     }
 }
