@@ -74,6 +74,10 @@ private val FISH_VOICE_URL = Regex(
     """fish\.audio/(?:m|voice|v|model)/([A-Za-z0-9_-]{1,128})""",
     RegexOption.IGNORE_CASE
 )
+private val FISH_MODEL_PARAM = Regex(
+    """[?&](?:modelId|voiceId|id)=([A-Za-z0-9_-]{1,128})""",
+    RegexOption.IGNORE_CASE
+)
 private val FISH_LONG_TOKEN = Regex("[A-Za-z0-9_-]{16,128}")
 
 /** O Fish Audio aceita de 1 a 128 caracteres em `[A-Za-z0-9_-]`. */
@@ -91,6 +95,10 @@ fun parseFishVoiceId(input: String?): String? {
     if (isValidFishVoiceId(text)) return text
 
     FISH_VOICE_URL.find(text)?.groupValues?.getOrNull(1)
+        ?.takeIf { it.isNotBlank() }
+        ?.let { return it }
+
+    FISH_MODEL_PARAM.find(text)?.groupValues?.getOrNull(1)
         ?.takeIf { it.isNotBlank() }
         ?.let { return it }
 
