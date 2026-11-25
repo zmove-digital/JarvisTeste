@@ -26,11 +26,13 @@ sem esticar a imagem atrás dos textos. O ícone vem de `icons/`.
   A chave fica cifrada no aparelho e o texto só é enviado ao Fish Audio quando
   esse motor está escolhido.
 - Conversa por voz: microfone → Gemini → resposta falada, com histórico curto
-  em memória para manter o contexto.
+  em memória para manter o contexto. Depois de cada resposta ele continua
+  aceitando a próxima fala sem repetir o nome por 20 segundos.
 - **Ações no aparelho por *function calling***: além de conversar, o Jarvis
-  executa comandos como abrir aplicativos e playlists no Spotify, abrir conversas
-  ou ligar em viva-voz pelo WhatsApp (com confirmação do contato), pesquisar na
-  web, fazer chamadas telefônicas, controlar a mídia e criar alarmes/timers.
+  executa comandos como abrir aplicativos, playlists específicas ou a sua
+  biblioteca de playlists no Spotify, abrir conversas ou ligar em viva-voz pelo
+  WhatsApp (com confirmação do contato), localizar empresas no Maps, pesquisar
+  na web, fazer chamadas telefônicas, controlar a mídia e criar alarmes/timers.
 - Escuta contínua em primeiro plano (notificação fixa), inclusive com a tela
   apagada. Só envia ao Gemini depois da palavra de ativação (padrão: **"Jarvis"**).
 - Palavra de ativação configurável (aceita uma palavra ou expressão curta).

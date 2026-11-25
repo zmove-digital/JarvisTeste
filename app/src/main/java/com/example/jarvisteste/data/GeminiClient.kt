@@ -106,10 +106,16 @@ class GeminiClient(private val apiKey: String) {
                 "um navegador.\n" +
                 "Use consultar_clima para QUALQUER pergunta sobre clima, tempo, temperatura, " +
                 "chuva ou previsão, e responda com os dados obtidos.\n" +
+                "Use buscar_local quando o usuário pedir endereço, localização ou como chegar " +
+                "a uma empresa ou lugar. Se ele só quiser saber o endereço, responda com a " +
+                "busca na internet quando ela estiver disponível; se não souber, abra o Maps " +
+                "com buscar_local em vez de apenas recomendar uma pesquisa.\n" +
                 "Use pesquisar_web SOMENTE se o usuário pedir explicitamente para abrir o " +
                 "navegador, abrir um site ou pesquisar na internet. Nunca para responder uma " +
                 "pergunta.\n" +
-                "Ações no aparelho: use abrir_playlist_spotify para tocar playlists; " +
+                "Ações no aparelho: use abrir_playlist_spotify para tocar playlists " +
+                "(tipo \"biblioteca\" para \"minha biblioteca\" ou \"qualquer playlist da " +
+                "minha biblioteca\"); " +
                 "abrir_conversa_whatsapp para conversar ou ligar no zap (com acao \"ligar\" " +
                 "quando pedirem chamada ou viva-voz); ligar_telefone para chamada telefônica " +
                 "normal; controlar_midia para play/pause; definir_alarme e definir_timer. " +

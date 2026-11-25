@@ -613,7 +613,7 @@ class JarvisListeningService : Service(), RecognitionListener {
 
         // Tempo em que o Jarvis aceita fala sem repetir a palavra de ativação.
         private const val CONFIRM_WINDOW_MS = 25_000L
-        private const val FOLLOW_UP_WINDOW_MS = 8_000L
+        private const val FOLLOW_UP_WINDOW_MS = 20_000L
         private const val PROMPT_WINDOW_MS = 12_000L
 
         private val _status = MutableStateFlow(

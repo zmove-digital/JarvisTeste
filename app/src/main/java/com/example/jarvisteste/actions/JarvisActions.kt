@@ -35,6 +35,7 @@ object JarvisActions {
         openApp(context),
         openSpotify(context),
         openWhatsappChat(context),
+        findPlace(context),
         webSearch(context),
         weather(context),
         phoneCall(context),
@@ -80,31 +81,52 @@ object JarvisActions {
 
     private fun openSpotify(context: Context): ToolSpec = ToolSpec(
         name = "abrir_playlist_spotify",
-        description = "Abre uma playlist, álbum, artista ou faixa no Spotify, ou faz uma busca " +
-            "no Spotify quando o usuário só falou o nome. Use quando pedirem para tocar, " +
-            "ouvir ou colocar uma playlist/música no Spotify. Aceita o nome ou um link/ID do " +
-            "Spotify. Com link/ID direto, a reprodução é iniciada; com apenas um nome, abre " +
-            "a busca para o usuário escolher. Não use para pausar ou passar faixa " +
+        description = "Abre uma playlist, álbum, artista ou faixa no Spotify, abre a sua " +
+            "biblioteca de playlists ou faz uma busca no Spotify. Use quando pedirem para " +
+            "tocar, ouvir ou colocar uma playlist/música no Spotify. Aceita o nome ou um " +
+            "link/ID do Spotify. Use tipo \"biblioteca\" quando o usuário disser \"minha " +
+            "biblioteca\", \"minhas playlists\" ou \"qualquer playlist da minha biblioteca\" " +
+            "— nesses casos abra a aba de playlists salvas, não uma busca por texto. " +
+            "Com link/ID direto, a reprodução é iniciada; com apenas um nome, abre a busca " +
+            "para o usuário escolher. Não use para pausar ou passar faixa " +
             "(use controlar_midia) nem para abrir o app sem conteúdo específico " +
             "(use abrir_app).",
         parameters = schema(
             "consulta" to text(
                 "Nome da playlist, álbum, artista ou faixa; ou link do Spotify " +
-                    "(open.spotify.com/... ou spotify:...)."
+                    "(open.spotify.com/... ou spotify:...). Para a biblioteca, informe " +
+                    "\"minha biblioteca\"."
             ),
             "tipo" to choice(
-                "Tipo de conteúdo. Use \"playlist\" quando o usuário pedir uma playlist.",
-                listOf("playlist", "album", "artista", "faixa", "busca")
+                "Tipo de conteúdo. Use \"playlist\" para uma playlist específica e " +
+                    "\"biblioteca\" para as playlists salvas do usuário.",
+                listOf("playlist", "album", "artista", "faixa", "busca", "biblioteca")
             ),
             required = listOf("consulta")
         ),
         run = { args ->
             val consulta = args.optString("consulta").trim()
             val tipo = args.optString("tipo").trim().lowercase()
+            val wantsLibrary = tipo == "biblioteca" ||
+                consulta.contains("biblioteca", ignoreCase = true) ||
+                consulta.contains("minhas playlists", ignoreCase = true)
             when {
-                consulta.isEmpty() -> "Não entendi o que abrir no Spotify."
                 !isInstalled(context, SPOTIFY_PACKAGE) ->
                     "O Spotify não está instalado neste aparelho."
+
+                consulta.isEmpty() && !wantsLibrary ->
+                    "Não entendi o que abrir no Spotify."
+
+                wantsLibrary -> {
+                    val libraryUrl = "https://open.spotify.com/collection/playlists"
+                    val opened = launch(context, libraryUrl, SPOTIFY_PACKAGE) ||
+                        launch(context, libraryUrl)
+                    if (opened) {
+                        "Abri sua biblioteca de playlists no Spotify. Escolha uma para tocar."
+                    } else {
+                        "Encontrei o Spotify, mas não consegui abrir sua biblioteca."
+                    }
+                }
 
                 else -> {
                     val encoded = URLEncoder.encode(consulta, Charsets.UTF_8.name())
@@ -321,6 +343,40 @@ object JarvisActions {
             "O WhatsApp não está instalado ou não consegui abrir a conversa."
         }
     }
+
+    // ------------------------------------------------------------- mapas/local
+
+    private fun findPlace(context: Context): ToolSpec = ToolSpec(
+        name = "buscar_local",
+        description = "Abre o Google Maps com a busca de uma empresa, lugar ou endereço. " +
+            "Use quando o usuário pedir o endereço, a localização ou como chegar a um lugar. " +
+            "Não use para clima nem para abrir o navegador com uma busca comum.",
+        parameters = schema(
+            "consulta" to text("Nome da empresa, lugar ou endereço como o usuário falou."),
+            required = listOf("consulta")
+        ),
+        run = { args ->
+            val consulta = args.optString("consulta").trim()
+            if (consulta.isEmpty()) {
+                "Não entendi qual lugar procurar."
+            } else {
+                val encoded = URLEncoder.encode(consulta, Charsets.UTF_8.name())
+                val mapsUrl = "https://www.google.com/maps/search/?api=1&query=$encoded"
+                val geoUri = "geo:0,0?q=${Uri.encode(consulta)}"
+                val mapsPackage = "com.google.android.apps.maps"
+                val opened = if (isInstalled(context, mapsPackage)) {
+                    launch(context, mapsUrl, mapsPackage) || launch(context, geoUri, mapsPackage)
+                } else {
+                    false
+                }
+                if (opened) {
+                    "Abri $consulta no Maps."
+                } else {
+                    "O Google Maps não está instalado ou não consegui abrir $consulta."
+                }
+            }
+        }
+    )
 
     // ---------------------------------------------------------- pesquisar web
 
