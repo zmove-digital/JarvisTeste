@@ -5,6 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
@@ -35,8 +36,8 @@ import kotlinx.coroutines.isActive
  *
  *  - enquanto **você** fala, o orbe vibra de forma frenética com o nível do
  *    microfone ([MicLevel], vindo do `onRmsChanged` do reconhecedor);
- *  - enquanto o **Jarvis** fala, ele pulsa com a amplitude do áudio
- *    ([VoiceLevel]);
+ *  - enquanto o **Jarvis** fala, ele fica vermelho/vermelho forte, pulsa com a
+ *    amplitude do áudio ([VoiceLevel]) e entra em ritmo frenético;
  *  - ao pensar, gira mais rápido; parado, apenas respira devagar.
  *
  * Os anéis giram em velocidades diferentes e a energia abre "raios" ao redor do
@@ -52,6 +53,7 @@ fun JarvisOrb(
     var spin by remember { mutableFloatStateOf(0f) }
     var wobble by remember { mutableFloatStateOf(0f) }
     var time by remember { mutableFloatStateOf(0f) }
+    var speakingState by remember { mutableStateOf(false) }
 
     // Um único laço por quadro: lê os níveis atuais, suaviza e avança a rotação.
     // Assim o orbe responde a cada amostra de voz sem recompor a tela inteira.
@@ -71,6 +73,7 @@ fun JarvisOrb(
             t += dt
 
             val speaking = VoiceLevel.source.value != VoiceSource.NONE
+            speakingState = speaking
             val raw = when {
                 demo -> demoLevel(t, mood)
                 speaking -> 0.28f + VoiceLevel.level.value * 0.85f
@@ -85,19 +88,20 @@ fun JarvisOrb(
             val k = if (raw > smoothed) 30f else 9f
             smoothed += (raw - smoothed) * (1f - exp(-k * dt))
 
-            val speed = when (mood) {
-                AvatarMood.LISTENING -> 1.2f + smoothed * 4.4f
-                AvatarMood.SPEAKING -> 0.9f + smoothed * 3.4f
-                AvatarMood.THINKING -> 2.1f + smoothed * 2.2f
-                AvatarMood.IDLE -> 0.35f + smoothed * 1.4f
+            val speakingNow = speaking || mood == AvatarMood.SPEAKING
+            val speed = when {
+                speakingNow -> 1.6f + smoothed * 5.6f
+                mood == AvatarMood.LISTENING -> 1.2f + smoothed * 4.4f
+                mood == AvatarMood.THINKING -> 2.1f + smoothed * 2.2f
+                else -> 0.35f + smoothed * 1.4f
             }
             angle = (angle + speed * 62f * dt) % 360f
 
-            val freq = 5f + smoothed * 30f
+            val freq = if (speakingNow) 8f + smoothed * 46f else 5f + smoothed * 30f
             val jitter = (
                 sin(t * freq) * 0.6f +
                     sin(t * freq * 1.7f + 1.3f) * 0.4f
-                ) * smoothed
+                ) * smoothed * if (speakingNow) 1.7f else 1f
 
             energy = smoothed
             spin = angle
@@ -107,7 +111,7 @@ fun JarvisOrb(
     }
 
     Canvas(modifier = modifier) {
-        drawOrb(mood, energy, spin, wobble, time)
+        drawOrb(mood, energy, spin, wobble, time, speakingState)
     }
 }
 
@@ -126,7 +130,8 @@ private fun DrawScope.drawOrb(
     energy: Float,
     spin: Float,
     wobble: Float,
-    time: Float
+    time: Float,
+    speaking: Boolean
 ) {
     val w = size.width
     val h = size.height
@@ -137,11 +142,14 @@ private fun DrawScope.drawOrb(
     val center = Offset(cx, cy)
     val baseR = min(w, h) * 0.20f
 
-    val accent = when (mood) {
-        AvatarMood.THINKING -> Color(0xFF1E9BFF)
-        AvatarMood.SPEAKING -> JarvisColors.AccentSoft
+    val speakingNow = speaking || mood == AvatarMood.SPEAKING
+    val accent = when {
+        speakingNow -> JarvisColors.Danger
+        mood == AvatarMood.THINKING -> Color(0xFF1E9BFF)
         else -> JarvisColors.Accent
     }
+    // O vermelho forte aparece no núcleo e nos raios enquanto ele fala.
+    val hot = if (speakingNow) JarvisColors.DangerStrong else accent
 
     // O núcleo treme junto com a voz: pequenos deslocamentos a cada sílaba.
     val coreCenter = Offset(
@@ -177,7 +185,7 @@ private fun DrawScope.drawOrb(
             val inner = baseR * 1.06f
             val outer = baseR * (1.06f + 0.72f * energy * flicker)
             drawLine(
-                color = accent.copy(alpha = 0.08f + 0.34f * energy),
+                color = hot.copy(alpha = 0.10f + 0.42f * energy),
                 start = Offset(center.x + cos(a) * inner, center.y + sin(a) * inner),
                 end = Offset(center.x + cos(a) * outer, center.y + sin(a) * outer),
                 strokeWidth = baseR * 0.022f,
@@ -191,10 +199,13 @@ private fun DrawScope.drawOrb(
         drawArcRing(center, baseR * 1.90f, baseR * 0.032f, accent.copy(alpha = 0.45f), 3, 34f)
     }
     rotate(degrees = -spin * 1.6f, pivot = center) {
-        drawArcRing(center, baseR * 1.52f, baseR * 0.028f, accent.copy(alpha = 0.75f), 2, 58f)
+        drawArcRing(
+            center, baseR * 1.52f, baseR * 0.028f,
+            hot.copy(alpha = if (speakingNow) 0.92f else 0.75f), 2, 58f
+        )
     }
     rotate(degrees = spin * 2.3f, pivot = center) {
-        drawArcRing(center, baseR * 1.16f, baseR * 0.022f, accent.copy(alpha = 0.6f), 4, 44f)
+        drawArcRing(center, baseR * 1.16f, baseR * 0.022f, hot.copy(alpha = 0.6f), 4, 44f)
     }
 
     // Contorno fino do núcleo.
@@ -210,7 +221,7 @@ private fun DrawScope.drawOrb(
         brush = Brush.radialGradient(
             colors = listOf(
                 Color.White.copy(alpha = 0.98f),
-                JarvisColors.AccentSoft,
+                hot,
                 accent,
                 accent.copy(alpha = 0.30f),
                 Color.Transparent

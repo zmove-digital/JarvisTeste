@@ -42,8 +42,8 @@ sem esticar a imagem atrás dos textos. O ícone vem de `icons/`.
   nem a voz do Jarvis (pode ser desligado em Ajustes).
 - **Orbe de energia reativo** na tela inicial e em uma tela cheia que acende o
   aparelho quando o Jarvis é chamado, mesmo com a tela apagada. O orbe vibra de
-  forma frenética com a sua voz, gira mais rápido ao "pensar" e pulsa quando o
-  Jarvis responde.
+  forma frenética com a sua voz, gira mais rápido ao "pensar" e, quando o Jarvis
+  responde, fica vermelho/vermelho forte com movimento acelerado.
 - Chave da API cifrada com AES/GCM + Android Keystore.
 
 ## Requisitos
