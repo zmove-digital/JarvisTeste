@@ -106,6 +106,44 @@ class SettingsStore(context: Context) {
             ?: GeminiVoices.DEFAULT_ID
         set(value) = prefs.edit().putString(KEY_GEMINI_VOICE, value).apply()
 
+    /**
+     * Chave da API do Fish Audio (opcional). Como a chave do Gemini, fica
+     * cifrada pelo [SecureStore] e nunca é enviada para outro lugar além do
+     * próprio Fish Audio.
+     */
+    var fishAudioApiKey: String
+        get() = SecureStore.decrypt(prefs.getString(KEY_FISH_API_KEY, null)).orEmpty()
+        set(value) {
+            val trimmed = value.trim()
+            val encrypted = if (trimmed.isEmpty()) null else SecureStore.encrypt(trimmed)
+            prefs.edit().putString(KEY_FISH_API_KEY, encrypted).apply()
+        }
+
+    val hasFishAudioKey: Boolean get() = fishAudioApiKey.isNotBlank()
+
+    /** ID do modelo de voz do Fish Audio (aceita link ou ID). */
+    var fishAudioVoiceId: String
+        get() = prefs.getString(KEY_FISH_VOICE_ID, "").orEmpty()
+        set(value) = prefs.edit().putString(KEY_FISH_VOICE_ID, value.trim()).apply()
+
+    /** Nome amigável da voz personalizada, só para exibição. */
+    var fishAudioVoiceName: String
+        get() = prefs.getString(KEY_FISH_VOICE_NAME, "").orEmpty()
+        set(value) = prefs.edit().putString(KEY_FISH_VOICE_NAME, value.trim()).apply()
+
+    var fishAudioModel: String
+        get() = prefs.getString(KEY_FISH_MODEL, FishAudioModels.DEFAULT)
+            ?: FishAudioModels.DEFAULT
+        set(value) = prefs.edit().putString(KEY_FISH_MODEL, value).apply()
+
+    val fishAudioConfig: FishAudioConfig
+        get() = FishAudioConfig(
+            apiKey = fishAudioApiKey,
+            voiceId = fishAudioVoiceId,
+            voiceName = fishAudioVoiceName,
+            model = fishAudioModel
+        )
+
     var voiceProfileId: String
         get() = prefs.getString(KEY_VOICE_PROFILE, VoiceProfiles.DEFAULT_ID)
             ?: VoiceProfiles.DEFAULT_ID
@@ -153,6 +191,10 @@ class SettingsStore(context: Context) {
         private const val KEY_ONBOARDED = "onboarded"
         private const val KEY_VOICE_ENGINE = "voice_engine"
         private const val KEY_GEMINI_VOICE = "gemini_voice_id"
+        private const val KEY_FISH_API_KEY = "fish_audio_api_key_encrypted"
+        private const val KEY_FISH_VOICE_ID = "fish_audio_voice_id"
+        private const val KEY_FISH_VOICE_NAME = "fish_audio_voice_name"
+        private const val KEY_FISH_MODEL = "fish_audio_model"
         private const val KEY_VOICE_PROFILE = "voice_profile"
         private const val KEY_VOICE_NAME = "voice_name"
         private const val KEY_PITCH = "voice_pitch"

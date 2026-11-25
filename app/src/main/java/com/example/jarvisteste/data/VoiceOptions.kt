@@ -1,7 +1,7 @@
 package com.example.jarvisteste.data
 
 /** Motor usado para transformar o texto da resposta em voz. */
-enum class VoiceEngine { GEMINI, SYSTEM }
+enum class VoiceEngine { GEMINI, SYSTEM, FISH_AUDIO }
 
 /**
  * Vozes naturais geradas pelo Gemini TTS.
@@ -113,6 +113,9 @@ object GeminiVoices {
 
     const val DEFAULT_ID = "pt-br-assistant-6"
 
-    fun engineOf(value: String?): VoiceEngine =
-        if (value.equals("system", ignoreCase = true)) VoiceEngine.SYSTEM else VoiceEngine.GEMINI
+    fun engineOf(value: String?): VoiceEngine = when (value?.lowercase()) {
+        "system" -> VoiceEngine.SYSTEM
+        "fish_audio", "fish", "custom" -> VoiceEngine.FISH_AUDIO
+        else -> VoiceEngine.GEMINI
+    }
 }

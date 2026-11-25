@@ -21,6 +21,10 @@ sem esticar a imagem atrás dos textos. O ícone vem de `icons/`.
 - Voz do aparelho como alternativa offline, com perfis (feminina, masculina,
   narrador, robô, animado) e escolha de uma voz específica do motor TTS.
   Em todos os casos há um exemplo falado antes de confirmar.
+- **Voz personalizada (Fish Audio)**: o usuário pode colar o link/ID de uma voz
+  do catálogo ou de uma clonagem feita por ele e informar a própria API key.
+  A chave fica cifrada no aparelho e o texto só é enviado ao Fish Audio quando
+  esse motor está escolhido.
 - Conversa por voz: microfone → Gemini → resposta falada, com histórico curto
   em memória para manter o contexto.
 - **Ações no aparelho por *function calling***: além de conversar, o Jarvis
@@ -44,6 +48,8 @@ sem esticar a imagem atrás dos textos. O ícone vem de `icons/`.
 - Serviço de reconhecimento de voz do Google disponível no aparelho (o mesmo
   usado pelo Google Assistente) e conexão com a internet.
 - Chave gratuita do Gemini em <https://aistudio.google.com/apikey>.
+- Opcional: conta no Fish Audio com API key e uma voz (clonada ou do catálogo),
+  se quiser usar a voz personalizada.
 
 ## Como rodar
 
@@ -63,7 +69,7 @@ sem esticar a imagem atrás dos textos. O ícone vem de `icons/`.
    WhatsApp** na mesma seção.
 6. Diga **"Jarvis, que horas são?"** (ou a palavra configurada).
 
-## Vozes: Gemini TTS e voz do aparelho
+## Vozes: Gemini, aparelho e voz personalizada
 
 Em **Ajustes → Motor de voz** o usuário escolhe entre:
 
@@ -74,6 +80,20 @@ Em **Ajustes → Motor de voz** o usuário escolhe entre:
   de internet e consome a cota da API.
 - **Voz do aparelho** — usa o motor `TextToSpeech` local, funciona offline e
   permite escolher o perfil e uma voz específica instalada no celular.
+- **Voz personalizada** — usa a API oficial do **Fish Audio**
+  (`POST https://api.fish.audio/v1/tts`). Serve para a voz clonada do próprio
+  usuário ou para qualquer voz do catálogo. O campo **Link ou ID da voz** aceita
+  tanto `https://fish.audio/m/<id>` quanto o ID de 32 caracteres; a **API key** é
+  criada na conta do usuário em <https://fish.audio/app/api-keys> e fica cifrada
+  neste aparelho. O modelo pode ser:
+  - `S2.1 Pro Free` — grátis sob uso justo, bom para testar;
+  - `S2.1 Pro` — qualidade de produção (pago);
+  - `Drama 3` — o mesmo modelo usado pelo ATEUS (pago).
+
+  A clonagem é feita no site do Fish Audio
+  (<https://fish.audio/voice-clone/>): o usuário envia uma gravação da própria
+  voz, confirma que ela é dele e cola aqui o link do modelo criado. O app não
+  inclui vozes de terceiros nem chaves de API — cada comprador usa as suas.
 
 Como a voz online funciona:
 
@@ -88,7 +108,8 @@ Como a voz online funciona:
    escuta contínua liga, então a primeira resposta sai na hora.
 4. Se nada puder ser tocado (sem internet, cota esgotada, chave inválida), o
    `VoiceManager` cai automaticamente para a voz do aparelho e registra o motivo
-   no log, sem interromper a conversa.
+   no log, sem interromper a conversa. Com a voz personalizada, a ordem é Fish
+   Audio → Gemini → voz do aparelho.
 
 ## Escuta contínua: como se comporta
 
@@ -290,7 +311,9 @@ Ainda de fora:
   Android Keystore e não sai do aparelho.
 - As chamadas vão direto para `generativelanguage.googleapis.com` (HTTPS).
   Com as vozes do Gemini, o texto da resposta também é enviado ao mesmo serviço
-  para ser transformado em áudio.
+  para ser transformado em áudio. Com a voz personalizada, o texto é enviado
+  apenas ao `api.fish.audio` e a chave do Fish Audio fica cifrada como a do
+  Gemini.
 - O histórico de conversa fica apenas em memória e pode ser limpo em Ajustes.
 - O orbe é desenhado em código: nada de áudio, imagem ou vídeo sai do aparelho
   por causa do avatar.
@@ -305,9 +328,10 @@ app/src/main/java/com/example/jarvisteste/
 ├── SplashActivity.kt            # abertura: painel de laboratório holográfico
 ├── MainActivity.kt              # navegação onboarding → home → ajustes
 ├── data/
-│   ├── SecureStore.kt           # AES/GCM + Android Keystore
 │   ├── SettingsStore.kt         # preferências + perfis de voz
 │   ├── VoiceOptions.kt          # motor de voz e as 12 vozes do Gemini
+│   ├── FishAudioOptions.kt      # configuração e modelos do Fish Audio
+│   ├── SecureStore.kt           # AES/GCM + Android Keystore
 │   └── GeminiClient.kt          # REST direto ao Gemini, function calling e memória
 ├── actions/
 │   ├── JarvisActions.kt         # as ações no aparelho expostas como ferramentas
@@ -315,8 +339,9 @@ app/src/main/java/com/example/jarvisteste/
 │   ├── AppIndex.kt              # índice dos apps instalados + casamento por nome
 │   └── WeatherService.kt        # clima e previsão via Open-Meteo (sem chave)
 ├── audio/
-│   ├── VoiceManager.kt          # fala única: Gemini com fallback para o aparelho
+│   ├── VoiceManager.kt          # fala única: Fish/Gemini com fallback para o aparelho
 │   ├── GeminiTtsPlayer.kt       # Gemini TTS em streaming, AudioTrack e cache
+│   ├── FishAudioTtsPlayer.kt    # Fish Audio (MP3), cache, prévia e troca de voz
 │   ├── VoiceLevel.kt            # nível da fala do Jarvis (PCM ou envoltória local)
 │   ├── MicLevel.kt              # nível da sua voz (RMS do reconhecedor)
 │   ├── TtsManager.kt            # TextToSpeech, vozes e conclusão de fala
@@ -356,6 +381,11 @@ O arquivo `jarvis_server.py` é o backend antigo (FastAPI + Gemini no PC) e **n�
   ou cota, o Jarvis continua falando com a voz do aparelho.
 - A cota gratuita do Gemini tem limite de requisições; o app avisa quando ela é
   atingida.
+- A voz personalizada depende da conta do Fish Audio: a API key é do usuário e
+  os modelos pagos (`S2.1 Pro`, `Drama 3`) consomem créditos. O áudio chega em
+  MP3 e leva um pouco mais para começar que o streaming do Gemini, por isso
+  frases curtas ficam em cache (`cacheDir/fish_audio`). Sem chave, sem crédito
+  ou sem rede, o Jarvis volta para o Gemini ou para a voz do aparelho.
 - O orbe é uma animação 2D em `Canvas`: representa a voz por intensidade, não
   por um espectro de frequências real. A leitura do nível depende do
   `onRmsChanged`, que alguns aparelhos reportam de forma mais grosseira.

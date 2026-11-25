@@ -51,6 +51,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import com.example.jarvisteste.audio.TtsManager
 import com.example.jarvisteste.audio.VoiceManager
 import com.example.jarvisteste.data.ConversationMemory
+import com.example.jarvisteste.data.FishAudioConfig
 import com.example.jarvisteste.data.GeminiClient
 import com.example.jarvisteste.data.SettingsStore
 import com.example.jarvisteste.data.VoiceEngine
@@ -88,13 +89,25 @@ fun SettingsScreen(
     var engineName by rememberSaveable { mutableStateOf(settings.voiceEngine.name) }
     var geminiVoiceId by rememberSaveable { mutableStateOf(settings.geminiVoiceId) }
     var voiceName by remember { mutableStateOf(settings.voiceName) }
+    var fishApiKey by remember { mutableStateOf(settings.fishAudioApiKey) }
+    var fishVoiceId by rememberSaveable { mutableStateOf(settings.fishAudioVoiceId) }
+    var fishVoiceName by rememberSaveable { mutableStateOf(settings.fishAudioVoiceName) }
+    var fishModel by rememberSaveable { mutableStateOf(settings.fishAudioModel) }
     var testing by remember { mutableStateOf(false) }
     var feedback by remember { mutableStateOf<String?>(null) }
     var feedbackIsError by remember { mutableStateOf(false) }
+    var voiceFeedback by remember { mutableStateOf<String?>(null) }
+    var voiceFeedbackIsError by remember { mutableStateOf(false) }
     var historyCleared by remember { mutableStateOf(false) }
 
     val profile = VoiceProfiles.byId(profileId)
     val engine = VoiceEngine.valueOf(engineName)
+    val fishConfig = FishAudioConfig(
+        apiKey = fishApiKey,
+        voiceId = fishVoiceId,
+        voiceName = fishVoiceName,
+        model = fishModel
+    )
 
     fun save(showConfirmation: Boolean = true) {
         settings.apiKey = apiKey
@@ -102,15 +115,25 @@ fun SettingsScreen(
         settings.silenceBeeps = silenceBeeps
         settings.voiceEngine = engine
         settings.geminiVoiceId = geminiVoiceId
+        settings.fishAudioApiKey = fishApiKey
+        settings.fishAudioVoiceId = fishConfig.resolvedVoiceId
+        settings.fishAudioVoiceName = fishVoiceName
+        settings.fishAudioModel = fishModel
         settings.voiceProfileId = profile.id
         settings.voiceName = voiceName
         settings.pitch = profile.pitch
         settings.rate = profile.rate
+        voiceFeedback = null
         // Deixa o "Pois não?" do despertar pronto na voz recém-escolhida.
         voice.prewarmPrompt("Pois não?", settings)
         if (showConfirmation) {
             feedback = "Ajustes salvos."
             feedbackIsError = false
+        }
+        if (engine == VoiceEngine.FISH_AUDIO && !fishConfig.ready) {
+            voiceFeedback = "A voz personalizada precisa de API key e link/ID. " +
+                "Salvo mesmo assim: o Jarvis usará o Gemini ou a voz do aparelho."
+            voiceFeedbackIsError = true
         }
     }
 
@@ -318,7 +341,18 @@ fun SettingsScreen(
                 geminiVoiceId = geminiVoiceId,
                 profile = profile,
                 selectedVoiceName = voiceName,
-                onSelectEngine = { engineName = it.name },
+                fishAudio = fishConfig,
+                onFishAudioChange = {
+                    fishApiKey = it.apiKey
+                    fishVoiceId = it.voiceId
+                    fishVoiceName = it.voiceName
+                    fishModel = it.model
+                    voiceFeedback = null
+                },
+                onSelectEngine = {
+                    engineName = it.name
+                    voiceFeedback = null
+                },
                 onSelectGeminiVoice = { geminiVoiceId = it },
                 onSelectProfile = {
                     profileId = it.id
@@ -326,17 +360,44 @@ fun SettingsScreen(
                 },
                 onSelectVoice = { voiceName = it },
                 onPreview = {
-                    voice.speak(
-                        text = TtsManager.PREVIEW_TEXT,
-                        engine = engine,
-                        geminiVoiceId = geminiVoiceId,
-                        profile = profile,
-                        voiceName = voiceName,
-                        pitch = profile.pitch,
-                        rate = profile.rate
-                    )
+                    val missing = when {
+                        engine != VoiceEngine.FISH_AUDIO -> null
+                        fishConfig.apiKey.isBlank() -> "Informe a API key do Fish Audio."
+                        fishConfig.resolvedVoiceId.isBlank() ->
+                            "Cole o link ou o ID da voz do Fish Audio."
+                        else -> null
+                    }
+                    if (missing != null) {
+                        voiceFeedback = missing
+                        voiceFeedbackIsError = true
+                    } else {
+                        voiceFeedback = null
+                        voice.speak(
+                            text = TtsManager.PREVIEW_TEXT,
+                            engine = engine,
+                            geminiVoiceId = geminiVoiceId,
+                            profile = profile,
+                            voiceName = voiceName,
+                            pitch = profile.pitch,
+                            rate = profile.rate,
+                            fishAudioConfig = fishConfig,
+                            onError = {
+                                voiceFeedback = it
+                                voiceFeedbackIsError = true
+                            }
+                        )
+                    }
                 }
             )
+
+            if (voiceFeedback != null) {
+                Text(
+                    text = voiceFeedback!!,
+                    color = if (voiceFeedbackIsError) JarvisColors.Danger else JarvisColors.Success,
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+            }
 
             Spacer(modifier = Modifier.height(22.dp))
             HorizontalDivider(color = JarvisColors.Border)

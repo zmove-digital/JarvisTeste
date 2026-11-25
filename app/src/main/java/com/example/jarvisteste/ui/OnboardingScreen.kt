@@ -218,6 +218,7 @@ fun OnboardingScreen(
                             geminiVoiceId = geminiVoiceId,
                             profile = profile,
                             selectedVoiceName = voiceName,
+                            showFishAudio = false,
                             onSelectEngine = { engineName = it.name },
                             onSelectGeminiVoice = { geminiVoiceId = it },
                             onSelectProfile = {
