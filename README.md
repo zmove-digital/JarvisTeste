@@ -35,6 +35,8 @@ sem esticar a imagem atrás dos textos. O ícone vem de `icons/`.
   na web, fazer chamadas telefônicas, controlar a mídia e criar alarmes/timers.
 - Escuta contínua em primeiro plano (notificação fixa), inclusive com a tela
   apagada. Só envia ao Gemini depois da palavra de ativação (padrão: **"Jarvis"**).
+  O botão **ON** da tela inicial é horizontal e fica vermelho; quando o Jarvis
+  está falando, ele acende em vermelho forte.
 - Palavra de ativação configurável (aceita uma palavra ou expressão curta).
 - Silencia os bipes de início/fim do reconhecedor do Google sem afetar mídia
   nem a voz do Jarvis (pode ser desligado em Ajustes).

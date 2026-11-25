@@ -23,8 +23,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
@@ -52,7 +52,9 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.example.jarvisteste.actions.JarvisActions
 import com.example.jarvisteste.audio.MicLevel
+import com.example.jarvisteste.audio.VoiceLevel
 import com.example.jarvisteste.audio.VoiceManager
+import com.example.jarvisteste.audio.VoiceSource
 import com.example.jarvisteste.data.GeminiClient
 import com.example.jarvisteste.data.SettingsStore
 import com.example.jarvisteste.service.JarvisListeningService
@@ -85,6 +87,8 @@ fun HomeScreen(
 
     val serviceRunning by JarvisListeningService.running.collectAsState()
     val serviceStatus by JarvisListeningService.status.collectAsState()
+    val voiceSource by VoiceLevel.source.collectAsState()
+    val jarvisSpeaking = voiceSource != VoiceSource.NONE
 
     val effectiveStatus = if (serviceRunning) serviceStatus.message else status
     val effectiveTranscript = if (serviceRunning) serviceStatus.transcript else recognizedText
@@ -348,20 +352,23 @@ fun HomeScreen(
                     Surface(
                         shape = CutCornerShape(6.dp),
                         color = when {
-                            listeningActive -> JarvisColors.SuccessSurface
+                            listeningActive && jarvisSpeaking -> JarvisColors.DangerStrong
+                            listeningActive -> JarvisColors.DangerSurface
                             !settings.hasApiKey -> JarvisColors.DangerSurface
                             else -> JarvisColors.Surface
                         }
                     ) {
                         Text(
                             text = when {
+                                listeningActive && jarvisSpeaking -> "  FALANDO  "
                                 listeningActive -> "  ESCUTANDO  "
                                 !settings.hasApiKey -> "  SEM CHAVE  "
                                 else -> "  PRONTO  "
                             },
                             modifier = Modifier.padding(vertical = 7.dp),
                             color = when {
-                                listeningActive -> JarvisColors.Success
+                                listeningActive && jarvisSpeaking -> Color.White
+                                listeningActive -> JarvisColors.Danger
                                 !settings.hasApiKey -> JarvisColors.Danger
                                 else -> JarvisColors.TextSecondary
                             },
@@ -492,8 +499,8 @@ fun HomeScreen(
                         checked = serviceRunning,
                         onCheckedChange = { toggleContinuousListening(it) },
                         colors = SwitchDefaults.colors(
-                            checkedThumbColor = JarvisColors.Success,
-                            checkedTrackColor = JarvisColors.SuccessSurface,
+                            checkedThumbColor = JarvisColors.DangerStrong,
+                            checkedTrackColor = JarvisColors.DangerSurface,
                             uncheckedThumbColor = JarvisColors.TextSecondary,
                             uncheckedTrackColor = JarvisColors.SurfaceAlt,
                             uncheckedBorderColor = JarvisColors.Border
@@ -504,26 +511,29 @@ fun HomeScreen(
 
             Spacer(modifier = Modifier.height(34.dp))
 
-            // --------------------------------------------------- botão de voz
+            // ------------------------------------------- botão ON horizontal
             Box(
                 modifier = Modifier
-                    .size(76.dp)
+                    .width(168.dp)
+                    .height(56.dp)
                     .background(
                         when {
-                            listeningActive -> JarvisColors.SuccessSurface
+                            listeningActive && jarvisSpeaking -> JarvisColors.DangerStrong
+                            listeningActive -> JarvisColors.DangerSurface
                             isListening -> JarvisColors.DangerSurface
                             else -> JarvisColors.SurfaceSelected
                         },
-                        CircleShape
+                        CutCornerShape(10.dp)
                     )
                     .border(
                         1.dp,
                         when {
-                            listeningActive -> JarvisColors.Success
+                            listeningActive && jarvisSpeaking -> Color.White
+                            listeningActive -> JarvisColors.Danger
                             isListening -> JarvisColors.Danger
                             else -> JarvisColors.Accent
                         },
-                        CircleShape
+                        CutCornerShape(10.dp)
                     )
                     .clickable {
                         when {
@@ -539,23 +549,51 @@ fun HomeScreen(
                     },
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = when {
-                        listeningActive -> "ON"
-                        isListening -> "..."
-                        else -> "MIC"
-                    },
-                    color = if (listeningActive) JarvisColors.Success else Color.White,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(width = 6.dp, height = 22.dp)
+                            .background(
+                                when {
+                                    listeningActive && jarvisSpeaking -> Color.White
+                                    listeningActive -> JarvisColors.DangerStrong
+                                    isListening -> JarvisColors.Danger
+                                    else -> JarvisColors.Accent
+                                }
+                            )
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = when {
+                            listeningActive && jarvisSpeaking -> "ON  FALANDO"
+                            listeningActive -> "ON"
+                            isListening -> "..."
+                            else -> "MIC"
+                        },
+                        color = when {
+                            listeningActive && jarvisSpeaking -> Color.White
+                            listeningActive -> JarvisColors.Danger
+                            else -> Color.White
+                        },
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.sp
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(15.dp))
 
             Text(
                 text = if (listeningActive) "ESCUTA CONTÍNUA ATIVA" else "CONTROLE DE VOZ",
-                color = if (listeningActive) JarvisColors.Success else JarvisColors.AccentSoft,
+                color = when {
+                    listeningActive && jarvisSpeaking -> JarvisColors.DangerStrong
+                    listeningActive -> JarvisColors.Danger
+                    else -> JarvisColors.AccentSoft
+                },
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 2.sp

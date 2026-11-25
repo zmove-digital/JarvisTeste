@@ -62,6 +62,9 @@ object JarvisColors {
     val SuccessSurface = Color(0xFF04302A)
     val Danger = Color(0xFFFF5C7A)
     val DangerSurface = Color(0xFF2A0713)
+    /** Vermelho intenso usado quando o Jarvis está falando. */
+    val DangerStrong = Color(0xFFFF173F)
+    val DangerStrongSurface = Color(0xFF5E0018)
 }
 
 @Composable
